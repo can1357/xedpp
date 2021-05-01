@@ -31,163 +31,147 @@ namespace xed
 #endif
 
 	static constexpr size_t max_ins_len = 15;
-	struct decoded_instruction;
 
-	// Implementation details.
+	// Structure describing how a register maps to another register.
 	//
-	namespace impl
+	template<typename T>
+	struct register_mapping
 	{
-		// Structure describing how a register maps to another register.
+		// Base register of full size, e.g. X86_REG_RAX.
 		//
-		template<typename T>
-		struct register_mapping
+		T base_register = {};
+
+		// Offset of the current register from the base register.
+		//
+		uint8_t offset = 0;
+
+		// Size of the current register in bytes.
+		//
+		uint8_t size = 0;
+	};
+
+	// register =(*n)=> [base_register] @ unique{ offset, size }
+	//
+	struct register_map
+	{
+		static constexpr size_t max_entry_count = ( size_t ) XED_REG_LAST;
+		static constexpr size_t max_xref_count = 8;
+		static constexpr size_t invalid_xref = ~0ull;
+
+		// Type of entries provided in the constructor.
+		//
+		using linear_entry_t = std::pair<xed_reg_enum_t, register_mapping<xed_reg_enum_t>>;
+		struct lookup_entry_t : register_mapping<xed_reg_enum_t>
 		{
-			// Base register of full size, e.g. X86_REG_RAX.
+			// Only for the parent, xref list will be assigned a list of children.
 			//
-			T base_register = {};
-
-			// Offset of the current register from the base register.
-			//
-			int8_t offset = 0;
-
-			// Size of the current register in bytes.
-			//
-			int8_t size = 0;
+			size_t xrefs[ max_xref_count ] = { 0 };
+			constexpr lookup_entry_t()
+			{
+				for ( size_t& v : xrefs )
+					v = invalid_xref;
+			}
 		};
 
-		// register =(*n)=> [base_register] @ unique{ offset, size }
+		// Lookup table type, and conversion into it.
 		//
-		template<typename T, T limit>
-		struct register_map
+		lookup_entry_t linear_entries[ max_entry_count ] = {};
+		inline constexpr register_map( std::initializer_list<linear_entry_t> entries )
 		{
-			static constexpr size_t max_entry_count = ( size_t ) limit;
-			static constexpr size_t max_xref_count = 8;
-			static constexpr size_t invalid_xref = ~0ull;
-
-			// Type of entries provided in the constructor.
-			//
-			using linear_entry_t = std::pair<T, register_mapping<T>>;
-			struct lookup_entry_t : register_mapping<T>
+			for ( auto&& [id, entry] : entries )
 			{
-				// Only for the parent, xref list will be assigned a list of children.
+				// Must be the only reference to it.
 				//
-				size_t xrefs[ max_xref_count ] = { 0 };
-				constexpr lookup_entry_t()
+				auto& entry_n = linear_entries[ ( size_t ) id ];
+				dassert( entry_n.size == 0 );
+
+				// Write base details.
+				//
+				entry_n.base_register = entry.base_register;
+				entry_n.offset = entry.offset;
+				entry_n.size = entry.size;
+
+				// Add xref to base register.
+				//
+				bool xref_added = false;
+				for ( auto& xref : linear_entries[ ( size_t ) entry.base_register ].xrefs )
 				{
-					for ( size_t& v : xrefs )
-						v = invalid_xref;
-				}
-			};
-
-			// Lookup table type, and conversion into it.
-			//
-			lookup_entry_t linear_entries[ max_entry_count ] = {};
-			inline constexpr register_map( std::initializer_list<linear_entry_t> entries )
-			{
-				for ( auto&& [id, entry] : entries )
-				{
-					// Must be the only reference to it.
-					//
-					auto& entry_n = linear_entries[ ( size_t ) id ];
-					dassert( entry_n.size == 0 );
-
-					// Write base details.
-					//
-					entry_n.base_register = entry.base_register;
-					entry_n.offset = entry.offset;
-					entry_n.size = entry.size;
-
-					// Add xref to base register.
-					//
-					bool xref_added = false;
-					for ( auto& xref : linear_entries[ ( size_t ) entry.base_register ].xrefs )
+					if ( xref == invalid_xref )
 					{
-						if ( xref == invalid_xref )
-						{
-							xref = ( size_t ) id;
-							xref_added = true;
-							break;
-						}
+						xref = ( size_t ) id;
+						xref_added = true;
+						break;
 					}
-					dassert( xref_added );
 				}
+				dassert( xref_added );
 			}
+		}
 
-			// Gets the offset<0> and size<1> of the mapping for the given register.
+		// Gets the offset<0> and size<1> of the mapping for the given register.
+		//
+		inline constexpr register_mapping<xed_reg_enum_t> resolve_mapping( uint32_t _reg ) const
+		{
+			// xed_reg_enum_try to find the register mapping, if successful return.
 			//
-			inline constexpr register_mapping<T> resolve_mapping( uint32_t _reg ) const
-			{
-				// Try to find the register mapping, if successful return.
-				//
-				auto& entry = linear_entries[ _reg ];
-				if ( entry.size )
-					return entry;
+			auto& entry = linear_entries[ _reg ];
+			if ( entry.size )
+				return entry;
 
-				// Otherwise return default mapping.
-				//
-				if ( XED_REG_XMM0 <= _reg && _reg <= XED_REG_XMM31 )
-					return { T( _reg ), 0, 16 };
-				if ( XED_REG_YMM0 <= _reg && _reg <= XED_REG_YMM31 )
-					return { T( _reg ), 0, 32 };
-				if ( XED_REG_ZMM0 <= _reg && _reg <= XED_REG_ZMM31 )
-					return { T( _reg ), 0, 64 };
-				if ( XED_REG_ES <= _reg && _reg <= XED_REG_GS )
-					return { T( _reg ), 0, 2 };
-
-				return { T( _reg ), 0, 8 };
-
-			}
-
-			// Gets the base register for the given register.
+			// Otherwise return default mapping.
 			//
-			inline constexpr T extend( uint32_t _reg ) const
-			{
-				return resolve_mapping( _reg ).base_register;
-			}
+			auto parent = extend( _reg );
+			return { parent, 0, uint8_t( xed_get_register_width_bits64( parent ) / 8 ) };
+		}
 
-			// Remaps the given register at given specifications.
+		// Gets the base register for the given register.
+		//
+		inline xed_reg_enum_t extend( uint32_t _reg ) const
+		{
+			return xed_get_largest_enclosing_register( xed_reg_enum_t( _reg ) );
+		}
+
+		// Remaps the given register at given specifications.
+		//
+		inline constexpr xed_reg_enum_t remap( uint32_t _reg, uint32_t offset, uint32_t size ) const
+		{
+			// xed_reg_enum_try to find the register mapping, if successful:
 			//
-			inline constexpr T remap( uint32_t _reg, uint32_t offset, uint32_t size ) const
+			auto& entry = linear_entries[ _reg ];
+			if ( entry.size )
 			{
-				// Try to find the register mapping, if successful:
+				// Get base register entry, enumerate xrefs.
 				//
-				auto& entry = linear_entries[ _reg ];
-				if ( entry.size )
+				auto& bentry = linear_entries[ _reg = ( uint32_t ) entry.base_register ];
+				fassert( bentry.size != 0 );
+
+				for ( size_t xref : bentry.xrefs )
 				{
-					// Get base register entry, enumerate xrefs.
-					//
-					auto& bentry = linear_entries[ _reg = ( uint32_t ) entry.base_register ];
-					fassert( bentry.size != 0 );
-
-					for ( size_t xref : bentry.xrefs )
+					if ( xref != invalid_xref )
 					{
-						if ( xref != invalid_xref )
-						{
-							auto& pentry = linear_entries[ ( size_t ) xref ];
+						auto& pentry = linear_entries[ ( size_t ) xref ];
 
-							if ( pentry.base_register == entry.base_register &&
-								 pentry.offset == offset &&
-								 pentry.size == size )
-							{
-								return ( T ) xref;
-							}
+						if ( pentry.base_register == entry.base_register &&
+							 pentry.offset == offset &&
+							 pentry.size == size )
+						{
+							return ( xed_reg_enum_t ) xref;
 						}
 					}
 				}
-
-				// If we fail to find, and we're strictly remapping to a full register, return as is.
-				//
-				fassert( offset == 0 );
-				return ( T ) _reg;
 			}
 
-			// Checks whether the register is a generic register that is handled.
+			// If we fail to find, and we're strictly remapping to a full register, return as is.
 			//
-			inline constexpr bool is_generic( uint32_t _reg ) const
-			{
-				return linear_entries[ _reg ].size != 0;
-			}
-		};
+			fassert( offset == 0 );
+			return ( xed_reg_enum_t ) _reg;
+		}
+
+		// Checks whether the register is a generic register that is handled.
+		//
+		inline constexpr bool is_generic( uint32_t _reg ) const
+		{
+			return linear_entries[ _reg ].size != 0;
+		}
 	};
 
 	// Table of GP regs.
@@ -205,7 +189,7 @@ namespace xed
 
 	// Xed register mapping.
 	//
-	inline constexpr impl::register_map<xed_reg_enum_t, XED_REG_LAST> registers =
+	inline constexpr register_map registers =
 	{
 		{
             /* [Instance]           [Base]       [Offset] [Size]  */
@@ -292,10 +276,6 @@ namespace xed
             { XED_REG_R15D,		{ XED_REG_R15,		0,		4	} },
             { XED_REG_R15W,		{ XED_REG_R15,		0,		2	} },
             { XED_REG_R15B,		{ XED_REG_R15,		0,		1	} },
-
-			{ XED_REG_RFLAGS,	{ XED_REG_RFLAGS,	0,		8	} },
-			{ XED_REG_EFLAGS,	{ XED_REG_RFLAGS,	0,		4	} },
-			{ XED_REG_FLAGS,	{ XED_REG_RFLAGS,	0,		2	} },
 		}
 	};
 
@@ -462,24 +442,29 @@ namespace xed
 		{
 			auto mut = const_cast< encoder_request* >( this );
 
+			result<xstd::small_vector<uint8_t, max_ins_len>> res = {};
+			auto& tmp = res.result.emplace();
+			tmp.resize( max_ins_len );
+
 			// Try every possible combination and if none works fail.
 			//
 			for ( auto n : { 0, 64, 32, 16, 8 } )
 			{
-				if ( n == 64 && is_long() ) continue;
+				if ( n == 64 && !is_long() ) continue;
 				if ( n ) xed_encoder_request_set_effective_operand_width( mut, n );
 				
-				xstd::small_vector<uint8_t, max_ins_len> res = {};
-				res.resize( max_ins_len );
-				
 				uint32_t len = 0;
-				if ( xed_encode( mut, res.data(), max_ins_len, ( uint32_t* ) &len ) == XED_ERROR_NONE )
+				auto status = xed_encode( mut, tmp.data(), max_ins_len, ( uint32_t* ) &len );
+				if ( !n ) res.status = status;
+				
+				if ( status == XED_ERROR_NONE )
 				{
-					res.resize( len );
-					return res;
+					res.status = status;
+					tmp.resize( len );
+					break;
 				}
 			}
-			return {};
+			return res;
 		}
 	};
 
