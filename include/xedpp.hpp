@@ -3,6 +3,7 @@ extern "C"
 {
 	#include <xed/xed-interface.h>
 };
+#include <xstd/intrinsics.hpp>
 #include <xstd/small_vector.hpp>
 #include <xstd/assert.hpp>
 #include <xstd/result.hpp>
