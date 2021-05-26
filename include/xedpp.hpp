@@ -9,6 +9,7 @@ extern "C"
 #include <xstd/result.hpp>
 #include <xstd/range.hpp>
 #include <xstd/bitwise.hpp>
+#include <xstd/flat_map.hpp>
 #include <xstd/enum_name.hpp>
 #include <xstd/numeric_range.hpp>
 #include <stdint.h>
@@ -254,15 +255,19 @@ namespace xed
 
 	// Table of GP regs.
 	//
-	static const std::unordered_set<reg_t> x86_32_gp_regs = {
-		XED_REG_EAX, XED_REG_EBX, XED_REG_ECX, XED_REG_EDX,
-		XED_REG_ESI, XED_REG_EDI, XED_REG_EBX, XED_REG_EBP,
+	inline constexpr xstd::inplace_map<reg_t, std::monostate, void, 8> gp_regs_16 = {
+		{ XED_REG_AX,  {} }, { XED_REG_BX,  {} }, { XED_REG_CX,  {} }, { XED_REG_DX,  {} },
+		{ XED_REG_SI,  {} }, { XED_REG_DI,  {} }, { XED_REG_BX,  {} }, { XED_REG_BP,  {} },
 	};
-	static const std::unordered_set<reg_t> x86_64_gp_regs = {
-		XED_REG_RAX, XED_REG_RBX, XED_REG_RCX, XED_REG_RDX,
-		XED_REG_RSI, XED_REG_RDI, XED_REG_RBX, XED_REG_RBP,
-		XED_REG_R8,  XED_REG_R9,  XED_REG_R10, XED_REG_R11, 
-		XED_REG_R12, XED_REG_R13, XED_REG_R14, XED_REG_R15
+	inline constexpr xstd::inplace_map<reg_t, std::monostate, void, 8> gp_regs_32 = {
+		{ XED_REG_EAX, {} }, { XED_REG_EBX, {} }, { XED_REG_ECX, {} }, { XED_REG_EDX, {} },
+		{ XED_REG_ESI, {} }, { XED_REG_EDI, {} }, { XED_REG_EBX, {} }, { XED_REG_EBP, {} },
+	};
+	inline constexpr xstd::inplace_map<reg_t, std::monostate, void, 16> gp_regs_64 = {
+		{ XED_REG_RAX, {} }, { XED_REG_RBX, {} }, { XED_REG_RCX, {} }, { XED_REG_RDX, {} },
+		{ XED_REG_RSI, {} }, { XED_REG_RDI, {} }, { XED_REG_RBX, {} }, { XED_REG_RBP, {} },
+		{ XED_REG_R8,  {} }, { XED_REG_R9,  {} }, { XED_REG_R10, {} }, { XED_REG_R11, {} }, 
+		{ XED_REG_R12, {} }, { XED_REG_R13, {} }, { XED_REG_R14, {} }, { XED_REG_R15, {} },
 	};
 
 	// Xed register mapping.
