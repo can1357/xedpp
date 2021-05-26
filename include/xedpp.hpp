@@ -127,132 +127,78 @@ namespace xed
 		// Size of the current register in bytes.
 		//
 		uint8_t size = 0;
+
+		auto tie() { return std::tie( base_register, offset, size ); }
 	};
 
 	// register =(*n)=> [base_register] @ unique{ offset, size }
 	//
+	template<size_t N>
 	struct register_map
 	{
-		static constexpr size_t max_entry_count = ( size_t ) XED_REG_LAST;
-		static constexpr size_t max_xref_count = 8;
-		static constexpr size_t invalid_xref = ~0ull;
-
-		// Type of entries provided in the constructor.
+		using entry_type = std::pair<reg_t, register_mapping<reg_t>>;
+		
+		// The raw map and the constructor.
 		//
-		using linear_entry_t = std::pair<reg_t, register_mapping<reg_t>>;
-		struct lookup_entry_t : register_mapping<reg_t>
-		{
-			// Only for the parent, xref list will be assigned a list of children.
-			//
-			size_t xrefs[ max_xref_count ] = { 0 };
-			constexpr lookup_entry_t()
-			{
-				for ( size_t& v : xrefs )
-					v = invalid_xref;
-			}
-		};
-
-		// Lookup table type, and conversion into it.
-		//
-		lookup_entry_t linear_entries[ max_entry_count ] = {};
-		inline constexpr register_map( std::initializer_list<linear_entry_t> entries )
-		{
-			for ( auto&& [id, entry] : entries )
-			{
-				// Must be the only reference to it.
-				//
-				auto& entry_n = linear_entries[ ( size_t ) id ];
-				dassert( entry_n.size == 0 );
-
-				// Write base details.
-				//
-				entry_n.base_register = entry.base_register;
-				entry_n.offset = entry.offset;
-				entry_n.size = entry.size;
-
-				// Add xref to base register.
-				//
-				bool xref_added = false;
-				for ( auto& xref : linear_entries[ ( size_t ) entry.base_register ].xrefs )
-				{
-					if ( xref == invalid_xref )
-					{
-						xref = ( size_t ) id;
-						xref_added = true;
-						break;
-					}
-				}
-				dassert( xref_added );
-			}
-		}
+		xstd::sorted_inplace_map<reg_t, register_mapping<reg_t>, N> map;
 
 		// Gets the offset<0> and size<1> of the mapping for the given register.
 		//
-		inline constexpr register_mapping<reg_t> resolve_mapping( uint32_t _reg ) const
+		inline register_mapping<reg_t> resolve_mapping( reg_t reg ) const
 		{
 			// reg_try to find the register mapping, if successful return.
 			//
-			auto& entry = linear_entries[ _reg ];
-			if ( entry.size )
-				return entry;
+			auto it = map.find( reg );
+			if ( it != map.end() )
+				return it->second;
 
 			// Otherwise return default mapping.
 			//
-			auto parent = extend( _reg );
-			return { parent, 0, uint8_t( xed_get_register_width_bits64( parent ) / 8 ) };
+			return { extend( reg ), 0, uint8_t( xed_get_register_width_bits64( reg ) / 8 ) };
 		}
 
 		// Gets the base register for the given register.
 		//
-		inline reg_t extend( uint32_t _reg ) const
+		inline reg_t extend( reg_t reg ) const
 		{
-			return xed_get_largest_enclosing_register( reg_t( _reg ) );
+			return xed_get_largest_enclosing_register( reg );
 		}
 
 		// Remaps the given register at given specifications.
 		//
-		inline constexpr reg_t remap( uint32_t _reg, uint32_t offset, uint32_t size ) const
+		inline reg_t remap( reg_t reg, uint32_t offset, uint32_t size ) const
 		{
-			// reg_try to find the register mapping, if successful:
+			// Try to find the register mapping, if successful return.
 			//
-			auto& entry = linear_entries[ _reg ];
-			if ( entry.size )
+			reg_t r = extend( reg );
+			for ( auto& [k, v] : map )
 			{
-				// Get base register entry, enumerate xrefs.
-				//
-				auto& bentry = linear_entries[ _reg = ( uint32_t ) entry.base_register ];
-				fassert( bentry.size != 0 );
-
-				for ( size_t xref : bentry.xrefs )
+				if ( v.base_register == r &&
+					  v.offset == offset &&
+					  v.size == size )
 				{
-					if ( xref != invalid_xref )
-					{
-						auto& pentry = linear_entries[ ( size_t ) xref ];
-
-						if ( pentry.base_register == entry.base_register &&
-							 pentry.offset == offset &&
-							 pentry.size == size )
-						{
-							return ( reg_t ) xref;
-						}
-					}
+					return k;
 				}
 			}
 
 			// If we fail to find, and we're strictly remapping to a full register, return as is.
 			//
 			fassert( offset == 0 );
-			return ( reg_t ) _reg;
+			if ( xed_get_register_width_bits64( r ) == ( size * 8 ) )
+				return r;
+			else
+				return reg;
 		}
 
 		// Checks whether the register is a generic register that is handled.
 		//
-		inline constexpr bool is_generic( uint32_t _reg ) const
+		inline constexpr bool is_generic( reg_t reg ) const
 		{
-			return linear_entries[ _reg ].size != 0;
+			auto it = map.find( reg );
+			return it != map.end();
 		}
 	};
-
+	
 	// Table of GP regs.
 	//
 	inline constexpr xstd::inplace_map<reg_t, std::monostate, void, 8> gp_regs_16 = {
@@ -272,94 +218,94 @@ namespace xed
 
 	// Xed register mapping.
 	//
-	inline constexpr register_map registers =
+	inline constexpr register_map<68> registers = 
 	{
 		{
-				/* [Instance]           [Base]       [Offset] [Size]  */
-				{ XED_REG_RAX,		   { XED_REG_RAX,		0,		8	} },
-				{ XED_REG_EAX,		   { XED_REG_RAX,		0,		4	} },
-				{ XED_REG_AX,		   { XED_REG_RAX,		0,		2	} },
-				{ XED_REG_AH,		   { XED_REG_RAX,		1,		1	} },
-				{ XED_REG_AL,		   { XED_REG_RAX,		0,		1	} },
-						  				   
-				{ XED_REG_RBX,		   { XED_REG_RBX,		0,		8	} },
-				{ XED_REG_EBX,		   { XED_REG_RBX,		0,		4	} },
-				{ XED_REG_BX,		   { XED_REG_RBX,		0,		2	} },
-				{ XED_REG_BH,		   { XED_REG_RBX,		1,		1	} },
-				{ XED_REG_BL,		   { XED_REG_RBX,		0,		1	} },
-						  				   
-				{ XED_REG_RCX,		   { XED_REG_RCX,		0,		8	} },
-				{ XED_REG_ECX,		   { XED_REG_RCX,		0,		4	} },
-				{ XED_REG_CX,		   { XED_REG_RCX,		0,		2	} },
-				{ XED_REG_CH,		   { XED_REG_RCX,		1,		1	} },
-				{ XED_REG_CL,		   { XED_REG_RCX,		0,		1	} },
-						  				   
-				{ XED_REG_RDX,		   { XED_REG_RDX,		0,		8	} },
-				{ XED_REG_EDX,		   { XED_REG_RDX,		0,		4	} },
-				{ XED_REG_DX,		   { XED_REG_RDX,		0,		2	} },
-				{ XED_REG_DH,		   { XED_REG_RDX,		1,		1	} },
-				{ XED_REG_DL,		   { XED_REG_RDX,		0,		1	} },
-						  				   
-				{ XED_REG_RDI,		   { XED_REG_RDI,		0,		8	} },
-				{ XED_REG_EDI,		   { XED_REG_RDI,		0,		4	} },
-				{ XED_REG_DI,		   { XED_REG_RDI,		0,		2	} },
-				{ XED_REG_DIL,		   { XED_REG_RDI,		0,		1	} },
-						  				   
-				{ XED_REG_RSI,		   { XED_REG_RSI,		0,		8	} },
-				{ XED_REG_ESI,		   { XED_REG_RSI,		0,		4	} },
-				{ XED_REG_SI,		   { XED_REG_RSI,		0,		2	} },
-				{ XED_REG_SIL,		   { XED_REG_RSI,		0,		1	} },
-						  				   
-				{ XED_REG_RBP,		   { XED_REG_RBP,		0,		8	} },
-				{ XED_REG_EBP,		   { XED_REG_RBP,		0,		4	} },
-				{ XED_REG_BP,		   { XED_REG_RBP,		0,		2	} },
-				{ XED_REG_BPL,		   { XED_REG_RBP,		0,		1	} },
-						  				   
-				{ XED_REG_RSP,		   { XED_REG_RSP,		0,		8	} },
-				{ XED_REG_ESP,		   { XED_REG_RSP,		0,		4	} },
-				{ XED_REG_SP,		   { XED_REG_RSP,		0,		2	} },
-				{ XED_REG_SPL,		   { XED_REG_RSP,		0,		1	} },
-						  				   
-				{ XED_REG_R8,		   { XED_REG_R8,		0,		8	} },
-				{ XED_REG_R8D,		   { XED_REG_R8,		0,		4	} },
-				{ XED_REG_R8W,		   { XED_REG_R8,		0,		2	} },
-				{ XED_REG_R8B,		   { XED_REG_R8,		0,		1	} },
-						  				   
-				{ XED_REG_R9,		   { XED_REG_R9,		0,		8	} },
-				{ XED_REG_R9D,		   { XED_REG_R9,		0,		4	} },
-				{ XED_REG_R9W,		   { XED_REG_R9,		0,		2	} },
-				{ XED_REG_R9B,		   { XED_REG_R9,		0,		1	} },
-
-				{ XED_REG_R10,		   { XED_REG_R10,		0,		8	} },
-				{ XED_REG_R10D,		{ XED_REG_R10,		0,		4	} },
-				{ XED_REG_R10W,		{ XED_REG_R10,		0,		2	} },
-				{ XED_REG_R10B,		{ XED_REG_R10,		0,		1	} },
-
-				{ XED_REG_R11,		   { XED_REG_R11,		0,		8	} },
-				{ XED_REG_R11D,		{ XED_REG_R11,		0,		4	} },
-				{ XED_REG_R11W,		{ XED_REG_R11,		0,		2	} },
-				{ XED_REG_R11B,		{ XED_REG_R11,		0,		1	} },
-
-				{ XED_REG_R12,		   { XED_REG_R12,		0,		8	} },
-				{ XED_REG_R12D,		{ XED_REG_R12,		0,		4	} },
-				{ XED_REG_R12W,		{ XED_REG_R12,		0,		2	} },
-				{ XED_REG_R12B,		{ XED_REG_R12,		0,		1	} },
-
-				{ XED_REG_R13,		   { XED_REG_R13,		0,		8	} },
-				{ XED_REG_R13D,		{ XED_REG_R13,		0,		4	} },
-				{ XED_REG_R13W,		{ XED_REG_R13,		0,		2	} },
-				{ XED_REG_R13B,		{ XED_REG_R13,		0,		1	} },
-
-				{ XED_REG_R14,		   { XED_REG_R14,		0,		8	} },
-				{ XED_REG_R14D,		{ XED_REG_R14,		0,		4	} },
-				{ XED_REG_R14W,		{ XED_REG_R14,		0,		2	} },
-				{ XED_REG_R14B,		{ XED_REG_R14,		0,		1	} },
-
-				{ XED_REG_R15,		   { XED_REG_R15,		0,		8	} },
-				{ XED_REG_R15D,		{ XED_REG_R15,		0,		4	} },
-				{ XED_REG_R15W,		{ XED_REG_R15,		0,		2	} },
-				{ XED_REG_R15B,		{ XED_REG_R15,		0,		1	} },
-		}
+			/* [Instance]            [Base]         [Offset]   [Size]   */
+			{ XED_REG_RAX,       { XED_REG_RAX,        0,        8    } },
+			{ XED_REG_EAX,       { XED_REG_RAX,        0,        4    } },
+			{ XED_REG_AX,        { XED_REG_RAX,        0,        2    } },
+			{ XED_REG_AH,        { XED_REG_RAX,        1,        1    } },
+			{ XED_REG_AL,        { XED_REG_RAX,        0,        1    } },
+			                             
+			{ XED_REG_RBX,       { XED_REG_RBX,        0,        8    } },
+			{ XED_REG_EBX,       { XED_REG_RBX,        0,        4    } },
+			{ XED_REG_BX,        { XED_REG_RBX,        0,        2    } },
+			{ XED_REG_BH,        { XED_REG_RBX,        1,        1    } },
+			{ XED_REG_BL,        { XED_REG_RBX,        0,        1    } },
+			                             
+			{ XED_REG_RCX,       { XED_REG_RCX,        0,        8    } },
+			{ XED_REG_ECX,       { XED_REG_RCX,        0,        4    } },
+			{ XED_REG_CX,        { XED_REG_RCX,        0,        2    } },
+			{ XED_REG_CH,        { XED_REG_RCX,        1,        1    } },
+			{ XED_REG_CL,        { XED_REG_RCX,        0,        1    } },
+			                             
+			{ XED_REG_RDX,       { XED_REG_RDX,        0,        8    } },
+			{ XED_REG_EDX,       { XED_REG_RDX,        0,        4    } },
+			{ XED_REG_DX,        { XED_REG_RDX,        0,        2    } },
+			{ XED_REG_DH,        { XED_REG_RDX,        1,        1    } },
+			{ XED_REG_DL,        { XED_REG_RDX,        0,        1    } },
+			                             
+			{ XED_REG_RDI,       { XED_REG_RDI,        0,        8    } },
+			{ XED_REG_EDI,       { XED_REG_RDI,        0,        4    } },
+			{ XED_REG_DI,        { XED_REG_RDI,        0,        2    } },
+			{ XED_REG_DIL,       { XED_REG_RDI,        0,        1    } },
+			                             
+			{ XED_REG_RSI,       { XED_REG_RSI,        0,        8    } },
+			{ XED_REG_ESI,       { XED_REG_RSI,        0,        4    } },
+			{ XED_REG_SI,        { XED_REG_RSI,        0,        2    } },
+			{ XED_REG_SIL,       { XED_REG_RSI,        0,        1    } },
+			                             
+			{ XED_REG_RBP,       { XED_REG_RBP,        0,        8    } },
+			{ XED_REG_EBP,       { XED_REG_RBP,        0,        4    } },
+			{ XED_REG_BP,        { XED_REG_RBP,        0,        2    } },
+			{ XED_REG_BPL,       { XED_REG_RBP,        0,        1    } },
+			                             
+			{ XED_REG_RSP,       { XED_REG_RSP,        0,        8    } },
+			{ XED_REG_ESP,       { XED_REG_RSP,        0,        4    } },
+			{ XED_REG_SP,        { XED_REG_RSP,        0,        2    } },
+			{ XED_REG_SPL,       { XED_REG_RSP,        0,        1    } },
+			                             
+			{ XED_REG_R8,        { XED_REG_R8,         0,        8    } },
+			{ XED_REG_R8D,       { XED_REG_R8,         0,        4    } },
+			{ XED_REG_R8W,       { XED_REG_R8,         0,        2    } },
+			{ XED_REG_R8B,       { XED_REG_R8,         0,        1    } },
+			                             
+			{ XED_REG_R9,        { XED_REG_R9,         0,        8    } },
+			{ XED_REG_R9D,       { XED_REG_R9,         0,        4    } },
+			{ XED_REG_R9W,       { XED_REG_R9,         0,        2    } },
+			{ XED_REG_R9B,       { XED_REG_R9,         0,        1    } },
+			
+			{ XED_REG_R10,       { XED_REG_R10,        0,        8    } },
+			{ XED_REG_R10D,      { XED_REG_R10,        0,        4    } },
+			{ XED_REG_R10W,      { XED_REG_R10,        0,        2    } },
+			{ XED_REG_R10B,      { XED_REG_R10,        0,        1    } },
+			
+			{ XED_REG_R11,       { XED_REG_R11,        0,        8    } },
+			{ XED_REG_R11D,      { XED_REG_R11,        0,        4    } },
+			{ XED_REG_R11W,      { XED_REG_R11,        0,        2    } },
+			{ XED_REG_R11B,      { XED_REG_R11,        0,        1    } },
+			
+			{ XED_REG_R12,       { XED_REG_R12,        0,        8    } },
+			{ XED_REG_R12D,      { XED_REG_R12,        0,        4    } },
+			{ XED_REG_R12W,      { XED_REG_R12,        0,        2    } },
+			{ XED_REG_R12B,      { XED_REG_R12,        0,        1    } },
+			
+			{ XED_REG_R13,       { XED_REG_R13,        0,        8    } },
+			{ XED_REG_R13D,      { XED_REG_R13,        0,        4    } },
+			{ XED_REG_R13W,      { XED_REG_R13,        0,        2    } },
+			{ XED_REG_R13B,      { XED_REG_R13,        0,        1    } },
+			
+			{ XED_REG_R14,       { XED_REG_R14,        0,        8    } },
+			{ XED_REG_R14D,      { XED_REG_R14,        0,        4    } },
+			{ XED_REG_R14W,      { XED_REG_R14,        0,        2    } },
+			{ XED_REG_R14B,      { XED_REG_R14,        0,        1    } },
+			
+			{ XED_REG_R15,       { XED_REG_R15,        0,        8    } },
+			{ XED_REG_R15D,      { XED_REG_R15,        0,        4    } },
+			{ XED_REG_R15W,      { XED_REG_R15,        0,        2    } },
+			{ XED_REG_R15B,      { XED_REG_R15,        0,        1    } },
+		} 
 	};
 
 	// Status type.
