@@ -38,6 +38,7 @@ namespace xstd
 	    }                                               \
 	};														 
 	MAP_XED_ENUM( reg_enum                     );
+	MAP_XED_ENUM( reg_class_enum               );
 	MAP_XED_ENUM( error_enum                   );
 	MAP_XED_ENUM( category_enum                );
 	MAP_XED_ENUM( iclass_enum                  );
@@ -78,6 +79,7 @@ namespace xed
 	// Renames.
 	//
 	using reg_t =             xed_reg_enum_t;
+	using reg_class_t =       xed_reg_class_enum_t;
 	using error_t =           xed_error_enum_t;
 	
 	using category_t =        xed_category_enum_t;
@@ -111,9 +113,132 @@ namespace xed
 	//
 	static constexpr size_t max_ins_len = 15;
 
+	// Table of GP regs.
+	//
+	inline constexpr xstd::sorted_inplace_map<reg_t, std::monostate, 8> gp_regs_16 = {
+		{ XED_REG_AX,  {} }, { XED_REG_BX,  {} }, { XED_REG_CX,  {} }, { XED_REG_DX,  {} },
+		{ XED_REG_SI,  {} }, { XED_REG_DI,  {} }, { XED_REG_BX,  {} }, { XED_REG_BP,  {} },
+	};
+	inline constexpr xstd::sorted_inplace_map<reg_t, std::monostate, 8> gp_regs_32 = {
+		{ XED_REG_EAX, {} }, { XED_REG_EBX, {} }, { XED_REG_ECX, {} }, { XED_REG_EDX, {} },
+		{ XED_REG_ESI, {} }, { XED_REG_EDI, {} }, { XED_REG_EBX, {} }, { XED_REG_EBP, {} },
+	};
+	inline constexpr xstd::sorted_inplace_map<reg_t, std::monostate, 16> gp_regs_64 = {
+		{ XED_REG_RAX, {} }, { XED_REG_RBX, {} }, { XED_REG_RCX, {} }, { XED_REG_RDX, {} },
+		{ XED_REG_RSI, {} }, { XED_REG_RDI, {} }, { XED_REG_RBX, {} }, { XED_REG_RBP, {} },
+		{ XED_REG_R8,  {} }, { XED_REG_R9,  {} }, { XED_REG_R10, {} }, { XED_REG_R11, {} }, 
+		{ XED_REG_R12, {} }, { XED_REG_R13, {} }, { XED_REG_R14, {} }, { XED_REG_R15, {} },
+	};
+
+	// Register properties.
+	//
+	inline constexpr bool is_ip( reg_t r ) { return r == XED_REG_RIP || r == XED_REG_EIP || r == XED_REG_IP; }
+	inline constexpr bool is_sp( reg_t r ) { return r == XED_REG_RSP || r == XED_REG_ESP || r == XED_REG_SP; }
+	inline constexpr bool is_flags( reg_t r ) { return r == XED_REG_RFLAGS || r == XED_REG_EFLAGS || r == XED_REG_FLAGS; }
+	inline constexpr bool is_xmm( reg_t r ) { return XED_REG_XMM_FIRST <= r && r <= XED_REG_XMM_LAST; }
+	inline constexpr bool is_ymm( reg_t r ) { return XED_REG_YMM_FIRST <= r && r <= XED_REG_YMM_LAST; }
+	inline constexpr bool is_zmm( reg_t r ) { return XED_REG_ZMM_FIRST <= r && r <= XED_REG_ZMM_LAST; }
+	inline constexpr bool is_mmx( reg_t r ) { return XED_REG_MMX0 <= r && r <= XED_REG_MMX7; }
+	inline constexpr bool is_fpu( reg_t r ) { return XED_REG_X87_FIRST <= r && r <= XED_REG_X87_LAST; }
+	inline constexpr bool is_segment_selector( reg_t r ) { return XED_REG_SR_FIRST <= r && r <= XED_REG_SR_LAST; }
+	inline constexpr bool is_control_register( reg_t r ) { return XED_REG_CR_FIRST <= r && r <= XED_REG_CR_LAST; }
+	inline constexpr bool is_kmask( reg_t r ) { return XED_REG_MASK_FIRST <= r && r <= XED_REG_MASK_LAST; }
+	inline constexpr bool is_gpr64( reg_t r ) { return XED_REG_GPR64_FIRST <= r && r <= XED_REG_GPR64_LAST; }
+	inline constexpr bool is_gpr32( reg_t r ) { return XED_REG_GPR32_FIRST <= r && r <= XED_REG_GPR32_LAST; }
+	inline constexpr bool is_gpr16( reg_t r ) { return XED_REG_GPR16_FIRST <= r && r <= XED_REG_GPR16_LAST; }
+	inline constexpr bool is_gpr8h( reg_t r ) { return XED_REG_GPR8h_FIRST <= r && r <= XED_REG_GPR8h_LAST; }
+	inline constexpr bool is_gpr8( reg_t r ) { return XED_REG_GPR8_FIRST <= r && r <= XED_REG_GPR8_LAST; }
+	inline bitcnt_t register_bit_width( reg_t r, bool is_long = true )
+	{
+		if ( is_long )
+			return xed_get_register_width_bits64( r );
+		else
+			return xed_get_register_width_bits( r );
+	}
+	inline size_t register_width( reg_t r, bool is_long = true )
+	{
+		return register_bit_width( r, is_long ) / 8;
+	}
+	inline reg_t extend_register( reg_t r, bool is_long = true )
+	{
+		return is_long ? xed_get_largest_enclosing_register( r ) : xed_get_largest_enclosing_register32( r );
+	}
+	inline reg_class_t register_class( reg_t r )
+	{
+		return xed_reg_class( r );
+	}
+
+	// Register mapping.
+	//
+	inline reg_t remap_register( reg_t r, size_t offset, size_t size )
+	{
+		auto parent = extend_register( r );
+
+		// GPRs:
+		//
+		if ( is_gpr64( parent ) )
+		{
+			if ( size == 8 && offset == 0 )
+				return parent;
+			else if ( size == 4 && offset == 0 )
+				return reg_t( ( r - XED_REG_GPR64_FIRST ) + XED_REG_GPR32_FIRST );
+			else if ( size == 2 && offset == 0 )
+				return reg_t( ( r - XED_REG_GPR64_FIRST ) + XED_REG_GPR16_FIRST );
+			else if ( size == 1 && offset == 0 )
+				return reg_t( ( r - XED_REG_GPR64_FIRST ) + XED_REG_GPR8_FIRST );
+			else if ( size == 1 && offset == 1 && XED_REG_RAX <= parent && parent <= XED_REG_RBX )
+				return reg_t( ( r - XED_REG_GPR64_FIRST ) + XED_REG_GPR8h_FIRST );
+		}
+
+		// Self:
+		//
+		if ( register_width( parent ) == size && offset == 0 )
+			return parent;
+		
+		// Vector Registers:
+		//
+		if ( is_zmm( parent ) )
+		{
+			if ( size == ( 128 / 8 ) && offset == 0 )
+				return reg_t( ( r - XED_REG_ZMM_FIRST ) + XED_REG_XMM_FIRST );
+			else if ( size == ( 256 / 8 ) && offset == 0 )
+				return reg_t( ( r - XED_REG_ZMM_FIRST ) + XED_REG_YMM_FIRST );
+		}
+		// -- If compiled witout AVX512:
+		//
+		else if ( is_ymm( parent ) )
+		{
+			if ( size == ( 128 / 8 ) && offset == 0 )
+				return reg_t( ( r - XED_REG_YMM_FIRST ) + XED_REG_XMM_FIRST );
+		}
+
+		// RIP/RFLAGS:
+		//
+		if ( parent == XED_REG_RIP )
+		{
+			if ( size == 4 )
+				return XED_REG_EIP;
+			else if ( size == 2 )
+				return XED_REG_IP;
+			else
+				return XED_REG_INVALID;
+		}
+		else if ( parent == XED_REG_RFLAGS )
+		{
+			if ( size == 4 )
+				return XED_REG_EFLAGS;
+			else if ( size == 2 )
+				return XED_REG_FLAGS;
+			else
+				return XED_REG_INVALID;
+		}
+		return XED_REG_INVALID;
+	}
+
+
 	// Structure describing how a register maps to another register.
 	//
-	template<typename T>
+	template<typename T = reg_t>
 	struct register_mapping
 	{
 		// Base register of full size, e.g. X86_REG_RAX.
@@ -130,183 +255,14 @@ namespace xed
 
 		auto tie() { return std::tie( base_register, offset, size ); }
 	};
-
-	// register =(*n)=> [base_register] @ unique{ offset, size }
-	//
-	template<size_t N>
-	struct register_map
+	inline register_mapping<> resolve_mapping( reg_t reg )
 	{
-		using entry_type = std::pair<reg_t, register_mapping<reg_t>>;
-		
-		// The raw map and the constructor.
-		//
-		xstd::sorted_inplace_map<reg_t, register_mapping<reg_t>, N> map;
-
-		// Gets the offset<0> and size<1> of the mapping for the given register.
-		//
-		inline register_mapping<reg_t> resolve_mapping( reg_t reg ) const
-		{
-			// reg_try to find the register mapping, if successful return.
-			//
-			auto it = map.find( reg );
-			if ( it != map.end() )
-				return it->second;
-
-			// Otherwise return default mapping.
-			//
-			return { extend( reg ), 0, uint8_t( xed_get_register_width_bits64( reg ) / 8 ) };
-		}
-
-		// Gets the base register for the given register.
-		//
-		inline reg_t extend( reg_t reg ) const
-		{
-			return xed_get_largest_enclosing_register( reg );
-		}
-
-		// Remaps the given register at given specifications.
-		//
-		inline reg_t remap( reg_t reg, uint32_t offset, uint32_t size ) const
-		{
-			// Try to find the register mapping, if successful return.
-			//
-			reg_t r = extend( reg );
-			for ( auto& [k, v] : map )
-			{
-				if ( v.base_register == r &&
-					  v.offset == offset &&
-					  v.size == size )
-				{
-					return k;
-				}
-			}
-
-			// If we fail to find, and we're strictly remapping to a full register, return as is.
-			//
-			fassert( offset == 0 );
-			if ( xed_get_register_width_bits64( r ) == ( size * 8 ) )
-				return r;
-			else
-				return reg;
-		}
-
-		// Checks whether the register is a generic register that is handled.
-		//
-		inline constexpr bool is_generic( reg_t reg ) const
-		{
-			auto it = map.find( reg );
-			return it != map.end();
-		}
-	};
-	
-	// Table of GP regs.
-	//
-	inline constexpr xstd::inplace_map<reg_t, std::monostate, void, 8> gp_regs_16 = {
-		{ XED_REG_AX,  {} }, { XED_REG_BX,  {} }, { XED_REG_CX,  {} }, { XED_REG_DX,  {} },
-		{ XED_REG_SI,  {} }, { XED_REG_DI,  {} }, { XED_REG_BX,  {} }, { XED_REG_BP,  {} },
-	};
-	inline constexpr xstd::inplace_map<reg_t, std::monostate, void, 8> gp_regs_32 = {
-		{ XED_REG_EAX, {} }, { XED_REG_EBX, {} }, { XED_REG_ECX, {} }, { XED_REG_EDX, {} },
-		{ XED_REG_ESI, {} }, { XED_REG_EDI, {} }, { XED_REG_EBX, {} }, { XED_REG_EBP, {} },
-	};
-	inline constexpr xstd::inplace_map<reg_t, std::monostate, void, 16> gp_regs_64 = {
-		{ XED_REG_RAX, {} }, { XED_REG_RBX, {} }, { XED_REG_RCX, {} }, { XED_REG_RDX, {} },
-		{ XED_REG_RSI, {} }, { XED_REG_RDI, {} }, { XED_REG_RBX, {} }, { XED_REG_RBP, {} },
-		{ XED_REG_R8,  {} }, { XED_REG_R9,  {} }, { XED_REG_R10, {} }, { XED_REG_R11, {} }, 
-		{ XED_REG_R12, {} }, { XED_REG_R13, {} }, { XED_REG_R14, {} }, { XED_REG_R15, {} },
-	};
-
-	// Xed register mapping.
-	//
-	inline constexpr register_map<68> registers = 
-	{
-		{
-			/* [Instance]            [Base]         [Offset]   [Size]   */
-			{ XED_REG_RAX,       { XED_REG_RAX,        0,        8    } },
-			{ XED_REG_EAX,       { XED_REG_RAX,        0,        4    } },
-			{ XED_REG_AX,        { XED_REG_RAX,        0,        2    } },
-			{ XED_REG_AH,        { XED_REG_RAX,        1,        1    } },
-			{ XED_REG_AL,        { XED_REG_RAX,        0,        1    } },
-			                             
-			{ XED_REG_RBX,       { XED_REG_RBX,        0,        8    } },
-			{ XED_REG_EBX,       { XED_REG_RBX,        0,        4    } },
-			{ XED_REG_BX,        { XED_REG_RBX,        0,        2    } },
-			{ XED_REG_BH,        { XED_REG_RBX,        1,        1    } },
-			{ XED_REG_BL,        { XED_REG_RBX,        0,        1    } },
-			                             
-			{ XED_REG_RCX,       { XED_REG_RCX,        0,        8    } },
-			{ XED_REG_ECX,       { XED_REG_RCX,        0,        4    } },
-			{ XED_REG_CX,        { XED_REG_RCX,        0,        2    } },
-			{ XED_REG_CH,        { XED_REG_RCX,        1,        1    } },
-			{ XED_REG_CL,        { XED_REG_RCX,        0,        1    } },
-			                             
-			{ XED_REG_RDX,       { XED_REG_RDX,        0,        8    } },
-			{ XED_REG_EDX,       { XED_REG_RDX,        0,        4    } },
-			{ XED_REG_DX,        { XED_REG_RDX,        0,        2    } },
-			{ XED_REG_DH,        { XED_REG_RDX,        1,        1    } },
-			{ XED_REG_DL,        { XED_REG_RDX,        0,        1    } },
-			                             
-			{ XED_REG_RDI,       { XED_REG_RDI,        0,        8    } },
-			{ XED_REG_EDI,       { XED_REG_RDI,        0,        4    } },
-			{ XED_REG_DI,        { XED_REG_RDI,        0,        2    } },
-			{ XED_REG_DIL,       { XED_REG_RDI,        0,        1    } },
-			                             
-			{ XED_REG_RSI,       { XED_REG_RSI,        0,        8    } },
-			{ XED_REG_ESI,       { XED_REG_RSI,        0,        4    } },
-			{ XED_REG_SI,        { XED_REG_RSI,        0,        2    } },
-			{ XED_REG_SIL,       { XED_REG_RSI,        0,        1    } },
-			                             
-			{ XED_REG_RBP,       { XED_REG_RBP,        0,        8    } },
-			{ XED_REG_EBP,       { XED_REG_RBP,        0,        4    } },
-			{ XED_REG_BP,        { XED_REG_RBP,        0,        2    } },
-			{ XED_REG_BPL,       { XED_REG_RBP,        0,        1    } },
-			                             
-			{ XED_REG_RSP,       { XED_REG_RSP,        0,        8    } },
-			{ XED_REG_ESP,       { XED_REG_RSP,        0,        4    } },
-			{ XED_REG_SP,        { XED_REG_RSP,        0,        2    } },
-			{ XED_REG_SPL,       { XED_REG_RSP,        0,        1    } },
-			                             
-			{ XED_REG_R8,        { XED_REG_R8,         0,        8    } },
-			{ XED_REG_R8D,       { XED_REG_R8,         0,        4    } },
-			{ XED_REG_R8W,       { XED_REG_R8,         0,        2    } },
-			{ XED_REG_R8B,       { XED_REG_R8,         0,        1    } },
-			                             
-			{ XED_REG_R9,        { XED_REG_R9,         0,        8    } },
-			{ XED_REG_R9D,       { XED_REG_R9,         0,        4    } },
-			{ XED_REG_R9W,       { XED_REG_R9,         0,        2    } },
-			{ XED_REG_R9B,       { XED_REG_R9,         0,        1    } },
-			
-			{ XED_REG_R10,       { XED_REG_R10,        0,        8    } },
-			{ XED_REG_R10D,      { XED_REG_R10,        0,        4    } },
-			{ XED_REG_R10W,      { XED_REG_R10,        0,        2    } },
-			{ XED_REG_R10B,      { XED_REG_R10,        0,        1    } },
-			
-			{ XED_REG_R11,       { XED_REG_R11,        0,        8    } },
-			{ XED_REG_R11D,      { XED_REG_R11,        0,        4    } },
-			{ XED_REG_R11W,      { XED_REG_R11,        0,        2    } },
-			{ XED_REG_R11B,      { XED_REG_R11,        0,        1    } },
-			
-			{ XED_REG_R12,       { XED_REG_R12,        0,        8    } },
-			{ XED_REG_R12D,      { XED_REG_R12,        0,        4    } },
-			{ XED_REG_R12W,      { XED_REG_R12,        0,        2    } },
-			{ XED_REG_R12B,      { XED_REG_R12,        0,        1    } },
-			
-			{ XED_REG_R13,       { XED_REG_R13,        0,        8    } },
-			{ XED_REG_R13D,      { XED_REG_R13,        0,        4    } },
-			{ XED_REG_R13W,      { XED_REG_R13,        0,        2    } },
-			{ XED_REG_R13B,      { XED_REG_R13,        0,        1    } },
-			
-			{ XED_REG_R14,       { XED_REG_R14,        0,        8    } },
-			{ XED_REG_R14D,      { XED_REG_R14,        0,        4    } },
-			{ XED_REG_R14W,      { XED_REG_R14,        0,        2    } },
-			{ XED_REG_R14B,      { XED_REG_R14,        0,        1    } },
-			
-			{ XED_REG_R15,       { XED_REG_R15,        0,        8    } },
-			{ XED_REG_R15D,      { XED_REG_R15,        0,        4    } },
-			{ XED_REG_R15W,      { XED_REG_R15,        0,        2    } },
-			{ XED_REG_R15B,      { XED_REG_R15,        0,        1    } },
-		} 
-	};
+		auto parent = extend_register( reg );
+		if ( is_gpr8h( reg ) )
+			return { parent, 1, ( uint8_t ) register_width( reg ) };
+		else
+			return { parent, 0, ( uint8_t ) register_width( reg ) };
+	}
 
 	// Status type.
 	//
@@ -399,14 +355,6 @@ namespace xed
 	{
 		return xed_operand_is_memory_addressing_register( n );
 	}
-	inline constexpr bool is_ip( reg_t r )
-	{
-		return r == XED_REG_RIP || r == XED_REG_EIP || r == XED_REG_IP;
-	}
-	inline constexpr bool is_sp( reg_t r )
-	{
-		return r == XED_REG_RSP || r == XED_REG_ESP || r == XED_REG_SP;
-	}
 	inline constexpr bool is_read( op_action_t a, bool always = false )
 	{
 		switch ( a )
@@ -443,17 +391,6 @@ namespace xed
 	inline bool is_isa_set_valid_for_chip( isa_set_t isa, chip_t chip )
 	{
 		return xed_isa_set_is_valid_for_chip( isa, chip );
-	}
-	inline size_t register_bit_width( reg_t r, bool is_long )
-	{
-		if ( is_long )
-			return xed_get_register_width_bits64( r );
-		else
-			return xed_get_register_width_bits( r );
-	}
-	inline size_t register_width( reg_t r, bool is_long )
-	{
-		return register_bit_width( r, is_long ) / 8;
 	}
 
 	// Fast NOP encoding.
@@ -561,21 +498,28 @@ namespace xed
 			return xstd::name_enum( value() );
 		}
 	};
-	struct imm0 : encoder_operand_t<XED_ENCODER_OPERAND_TYPE_IMM0>
+	struct imm0u : encoder_operand_t<XED_ENCODER_OPERAND_TYPE_IMM0>
 	{
-		inline constexpr imm0( uint64_t v, const std::initializer_list<bitcnt_t>& sizes = { 8, 16, 32, 64 } )
+		template<typename T = uint64_t> requires xstd::Castable<T, int64_t>
+		inline constexpr imm0u( T value, const std::initializer_list<bitcnt_t>& sizes = { 8, 32, 64 } )
 		{
-			u.imm0 = v;
+			u.imm0 = ( uint64_t ) value;
 			for ( auto& x : sizes )
 			{
-				if ( xstd::zero_extend( v, x ) == v )
+				if ( xstd::zero_extend( u.imm0, x ) == u.imm0 )
 				{
 					set_width_bits( x );
 					return;
 				}
 			}
 		}
-		inline constexpr imm0( uint64_t v, bitcnt_t n ) { u.imm0 = v; set_width_bits( n ); }
+		template<typename T = uint64_t> requires xstd::Castable<T, uint64_t>
+		inline constexpr imm0u( T value, bitcnt_t n ) { u.imm0 = ( uint64_t ) value; set_width_bits( n ); }
+		
+		template<typename T> requires ( !xstd::Castable<T, uint64_t> && xstd::Castable<T, int64_t> )
+		inline constexpr imm0u( T value, bitcnt_t n ) : imm0u( ( uint64_t ) ( int64_t ) value, n ) {}
+		template<typename T> requires ( !xstd::Castable<T, uint64_t> && xstd::Castable<T, int64_t> )
+		inline constexpr imm0u( T value, const std::initializer_list<bitcnt_t>& sizes = { 8, 32, 64 } ) : imm0u( ( uint64_t ) ( int64_t ) value, sizes ) {}
 
 		// Getter.
 		//
@@ -589,21 +533,29 @@ namespace xed
 			return xstd::fmt::offset( value() );
 		}
 	};
-	struct imm0s : encoder_operand_t<XED_ENCODER_OPERAND_TYPE_SIMM0>
+	struct imm0 : encoder_operand_t<XED_ENCODER_OPERAND_TYPE_SIMM0>
 	{
-		inline constexpr imm0s( int64_t v, const std::initializer_list<bitcnt_t>& sizes = { 8, 16, 32, 64 } )
+		template<typename T = int64_t> requires xstd::Castable<T, int64_t>
+		inline constexpr imm0( T value, const std::initializer_list<bitcnt_t>& sizes = { 8, 32, 64 } )
 		{
-			u.imm0 = v;
+			u.imm0 = ( uint64_t ) ( int64_t ) value;
 			for ( auto& x : sizes )
 			{
-				if ( xstd::sign_extend( v, x ) == v )
+				if ( xstd::sign_extend( u.imm0, x ) == u.imm0 )
 				{
+					if ( x == 64 ) type = XED_ENCODER_OPERAND_TYPE_IMM0; // Big hack.
 					set_width_bits( x );
 					return;
 				}
 			}
 		}
-		inline constexpr imm0s( int64_t v, bitcnt_t n ) { u.imm0 = ( uint64_t ) v; set_width_bits( n ); }
+		template<typename T = int64_t> requires xstd::Castable<T, int64_t>
+		inline constexpr imm0( T value, bitcnt_t n ) { u.imm0 = ( uint64_t ) ( int64_t ) value; set_width_bits( n ); }
+		
+		template<typename T> requires ( !xstd::Castable<T, int64_t> && xstd::Castable<T, uint64_t> )
+		inline constexpr imm0( T value, bitcnt_t n ) : imm0( ( int64_t ) ( uint64_t ) value, n ) {}
+		template<typename T> requires ( !xstd::Castable<T, int64_t> && xstd::Castable<T, uint64_t> )
+		inline constexpr imm0( T value, const std::initializer_list<bitcnt_t>& sizes = { 8, 32, 64 } ) : imm0( ( int64_t ) ( uint64_t ) value, sizes ) {}
 
 		// Getter.
 		//
@@ -1070,16 +1022,16 @@ namespace xed
 		// Immediate operands.
 		//
 		bool is_imm0_signed() const { return xed_operand_values_get_immediate_is_signed( this ); }
-		int64_t imm0s_value() const { return xed_operand_values_get_immediate_int64( this ); }
-		uint64_t imm0_value() const { return xed_operand_values_get_immediate_uint64( this ); }
+		int64_t imm0_value() const { return xed_operand_values_get_immediate_int64( this ); }
+		uint64_t imm0u_value() const { return xed_operand_values_get_immediate_uint64( this ); }
 		uint8_t imm1_value() const { return xed_operand_values_get_second_immediate( this ); }
 		xed::imm0 imm0() const { return { imm0_value(), imm_width_bits() }; }
 		xed::imm1 imm1() const { return { imm1_value() }; }
-		xed::imm0s imm0s() const { return { imm0s_value(), imm_width_bits() }; }
+		xed::imm0u imm0u() const { return { imm0u_value(), imm_width_bits() }; }
 		size_t imm_width() const { return xed3_operand_get_imm_width( this ) / 8; }
 		bitcnt_t imm_width_bits() const { return xed3_operand_get_imm_width( this ); }
 		void set_imm0( const xed::imm0& v ) { xed_operand_values_set_immediate_signed_bits( this, v.value(), v.width_bits() ); }
-		void set_imm0s( const xed::imm0s& v ) { xed_operand_values_set_immediate_unsigned_bits( this, v.value(), v.width_bits() ); }
+		void set_imm0u( const xed::imm0u& v ) { xed_operand_values_set_immediate_unsigned_bits( this, v.value(), v.width_bits() ); }
 
 		// Relative branch operand.
 		//
