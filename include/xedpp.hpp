@@ -309,12 +309,15 @@ namespace xed
 	// Enum attributes.
 	//
 	static constexpr iclass_t jcc_list[] = {
-		XED_ICLASS_JB, XED_ICLASS_JBE, XED_ICLASS_JECXZ,
-		XED_ICLASS_JL, XED_ICLASS_JLE, XED_ICLASS_JNB,
-		XED_ICLASS_JNL, XED_ICLASS_JNLE, XED_ICLASS_JNO,
-		XED_ICLASS_JNS, XED_ICLASS_JNZ, XED_ICLASS_JO,
-		XED_ICLASS_JRCXZ, XED_ICLASS_JS, XED_ICLASS_JZ,
-		XED_ICLASS_JNBE, XED_ICLASS_JNP, XED_ICLASS_JP
+		XED_ICLASS_JB,    XED_ICLASS_JNB,
+		XED_ICLASS_JL,    XED_ICLASS_JNL,
+		XED_ICLASS_JLE,   XED_ICLASS_JNLE,
+		XED_ICLASS_JO,    XED_ICLASS_JNO,
+		XED_ICLASS_JBE,   XED_ICLASS_JNBE,
+		XED_ICLASS_JS,    XED_ICLASS_JNS,
+		XED_ICLASS_JZ,    XED_ICLASS_JNZ,
+		XED_ICLASS_JP,    XED_ICLASS_JNP,
+		XED_ICLASS_JRCXZ, XED_ICLASS_JECXZ
 	};
 	static constexpr iclass_t ret_list[] = {
 		XED_ICLASS_RET_NEAR, XED_ICLASS_RET_FAR,
@@ -326,6 +329,16 @@ namespace xed
 	inline constexpr bool is_jcc( iclass_t iclass )
 	{
 		return std::find( std::begin( jcc_list ), std::end( jcc_list ), iclass ) != std::end( jcc_list );
+	}
+	inline constexpr iclass_t reverse_jcc( iclass_t iclass )
+	{
+		constexpr auto lim = std::end( jcc_list ) - 2;
+		if ( auto it = std::find( std::begin( jcc_list ), lim, iclass ); it != lim )
+		{
+			size_t idx = ( it - &jcc_list[ 0 ] );
+			return jcc_list[ idx ^ 1 ];
+		}
+		return XED_ICLASS_INVALID;
 	}
 	inline constexpr bool is_sret( iclass_t iclass )
 	{
