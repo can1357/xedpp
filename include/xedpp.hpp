@@ -761,9 +761,9 @@ namespace xed
 
 		// seg:[disp32]
 		inline constexpr mem( bitcnt_t width_bits, disp d )
-			: mem{ width_bits, XED_REG_INVALID, XED_REG_INVALID, XED_REG_INVALID, 0, d } {}
+			: mem{ width_bits, XED_REG_INVALID, XED_REG_INVALID, XED_REG_INVALID, 0, d } { u.mem.disp.displacement_bits = 32; }
 		inline constexpr mem( bitcnt_t width_bits, mseg seg, disp d = {} )
-			: mem{ width_bits, seg, XED_REG_INVALID, XED_REG_INVALID, 0, d } {}
+			: mem{ width_bits, seg, XED_REG_INVALID, XED_REG_INVALID, 0, d } { u.mem.disp.displacement_bits = 32; }
 
 		// seg:[base + disp]
 		inline constexpr mem( bitcnt_t width_bits, reg_t base, disp d = {} )
