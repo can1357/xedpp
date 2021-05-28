@@ -974,8 +974,8 @@ namespace xed
 		chip_t input_chip() const { return xed_decoded_inst_get_input_chip( this ); }
 		void set_input_chip( chip_t c ) { xed_decoded_inst_set_input_chip( this, c ); }
 
-		size_t eff_op_width() const { return eff_op_width() / 8; }
-		size_t eff_adr_width() const { return eff_adr_width() / 8; }
+		size_t eff_op_width() const { return eff_op_width_bits() / 8; }
+		size_t eff_adr_width() const { return eff_adr_width_bits() / 8; }
 		bitcnt_t eff_op_width_bits() const { return xed_operand_values_get_effective_operand_width( this ); }
 		bitcnt_t eff_adr_width_bits() const { return xed_operand_values_get_effective_address_width( this ); }
 		bitcnt_t stack_width_bits() const { return xed_operand_values_get_stack_address_width( this ); }
@@ -1071,7 +1071,7 @@ namespace xed
 		// Memory operands.
 		//
 		size_t num_mem_operands() const { return xed_decoded_inst_number_of_memory_operands( this ); }
-		size_t mem_width( size_t idx ) const { return xed_operand_values_get_memory_operand_length( this, idx ); }
+		size_t mem_width( size_t idx ) const { return xed_decoded_inst_get_memory_operand_length( this, idx ); }
 		bitcnt_t mem_width_bits( size_t idx ) const { return mem_width( idx ) * 8; }
 		reg_t mem_seg( size_t idx ) const { return xed_operand_values_get_seg_reg( this, idx ); }
 		reg_t mem_base( size_t idx ) const { return xed_operand_values_get_base_reg( this, idx ); }
