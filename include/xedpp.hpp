@@ -1207,7 +1207,8 @@ namespace xed
 
 		// Encoding API.
 		//
-		result<xstd::small_vector<uint8_t, max_ins_len>> encode()
+		result<xstd::small_vector<uint8_t, max_ins_len>> encode() { return encode( this ); }
+		result<xstd::small_vector<uint8_t, max_ins_len>> encode( encoding* o = nullptr ) const 
 		{
 			result<xstd::small_vector<uint8_t, max_ins_len>> res = {};
 			auto& out = res.result.emplace();
@@ -1218,14 +1219,18 @@ namespace xed
 			for ( auto n : { 0, 64, 32, 16 } )
 			{
 				if ( n == 64 && !is_long_mode() ) continue;
-				if ( n ) set_eff_op_width_bits( n );
-				
+
+				encoding copy = *this;
+				if ( n )
+					copy.set_eff_op_width_bits( n );
+
 				uint32_t len = 0;
-				auto status = xed_encode( this, out.data(), max_ins_len, ( uint32_t* ) &len );
+				auto status = xed_encode( &copy, out.data(), max_ins_len, ( uint32_t* ) &len );
 				if ( res.status == XED_ERROR_LAST ) res.status = status;
-				
+
 				if ( status == XED_ERROR_NONE )
 				{
+					if ( o ) *o = copy;
 					res.status = status;
 					out.resize( len );
 					break;
@@ -1233,7 +1238,6 @@ namespace xed
 			}
 			return res;
 		}
-		result<xstd::small_vector<uint8_t, max_ins_len>> encode() const { return xstd::make_copy( *this ).encode(); }
 		result<xstd::small_vector<uint8_t, max_ins_len>> encode( adjust_rip_t ) const
 		{
 			// Tries to replace the encodded instruction's relative displacement.
@@ -1331,7 +1335,6 @@ namespace xed
 	inline encoding encode( const mode_t& mode, iclass_t icl, Tx&&... ops )
 	{
 		std::initializer_list<xed_encoder_operand_t> opa = { ops... };
-
 		xed_encoder_instruction_t inst = {};
 		xed_inst( &inst, mode, icl, 0, opa.size(), opa.begin() );
 		encoding enc_req = { mode };
