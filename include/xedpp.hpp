@@ -266,8 +266,16 @@ namespace xed
 
 	// Status type.
 	//
+	struct status_traits
+	{
+		inline static constexpr error_t success_value = XED_ERROR_NONE;
+		inline static constexpr error_t failure_value = XED_ERROR_LAST;
+		template<typename T> inline static bool is_success( T st ) { return error_t( st ) == XED_ERROR_NONE; }
+	};
 	struct status
 	{
+		using status_traits = status_traits;
+
 		error_t value;
 
 		constexpr status( error_t v = XED_ERROR_GENERAL_ERROR ) noexcept : value( v ) {}
@@ -281,18 +289,12 @@ namespace xed
 		constexpr bool operator==( status other ) const { return value == other.value; }
 		constexpr bool operator!=( status other ) const { return value != other.value; }
 		std::string to_string() const { return xstd::fmt::str( XSTD_ESTR( "XED error: %d" ), ( uint32_t ) value ); }
-
-		// Inline traits.
-		//
-		inline static constexpr error_t success_value = XED_ERROR_NONE;
-		inline static constexpr error_t failure_value = XED_ERROR_LAST;
-		inline static bool is_success( status st ) { return st.value == XED_ERROR_NONE; }
 	};
 
 	// Result type.
 	//
 	template<typename T = std::monostate>
-	using result = xstd::result<T, status>;
+	using result = xstd::basic_result<T, status>;
 
 	// Machine modes.
 	//
