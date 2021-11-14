@@ -457,7 +457,7 @@ namespace xed
 			std::string dump;
 			dump.resize( 128 + 1 );
 			xed_operand_print( this, dump.data(), dump.size() - 1 );
-			dump.resize( dump.find( '\0' ) );
+			dump.resize( strlen( dump.data() ) );
 			return dump;
 		}
 	};
@@ -911,7 +911,7 @@ namespace xed
 			std::string dump;
 			dump.resize( 1024 + 1 );
 			xed_operand_values_dump( this, dump.data(), dump.size() - 1 );
-			dump.resize( dump.find( '\0' ) );
+			dump.resize( strlen( dump.data() ) );
 			return dump;
 		}
 		std::string to_string() const
@@ -919,7 +919,7 @@ namespace xed
 			std::string dump;
 			dump.resize( 128 + 1 );
 			xed_operand_values_print_short( this, dump.data(), dump.size() - 1 );
-			dump.resize( dump.find( '\0' ) );
+			dump.resize( strlen( dump.data() ) );
 			return dump;
 		}
 
@@ -1134,16 +1134,19 @@ namespace xed
 			std::string dump;
 			dump.resize( 1024 + 1 );
 			xed_decoded_inst_dump( this, dump.data(), dump.size() - 1 );
-			dump.resize( dump.find( '\0' ) );
+			dump.resize( strlen( dump.data() ) );
 			return dump;
+		}
+		bool to_string( char* buffer, size_t length, uint64_t address = 0 ) const
+		{
+			return xed_format_context( XED_SYNTAX_INTEL, this, buffer, length, address, nullptr, nullptr );
 		}
 		std::string to_string( uint64_t address = 0 ) const
 		{
-			std::string dump;
-			dump.resize( 128 + 1 );
-			if ( xed_format_context( XED_SYNTAX_INTEL, this, dump.data(), dump.size() - 1, address, nullptr, nullptr ) )
+			std::string dump( 128 + 1, 0 );
+			if ( to_string( dump.data(), dump.size() - 1 ) )
 			{
-				dump.resize( dump.find( '\0' ) );
+				dump.resize( strlen( dump.data() ) );
 				return dump;
 			}
 			return XSTD_ESTR( "Error" );
@@ -1187,7 +1190,7 @@ namespace xed
 			std::string dump;
 			dump.resize( 1024 + 1 );
 			xed_encode_request_print( this, dump.data(), dump.size() - 1 );
-			dump.resize( dump.find( '\0' ) );
+			dump.resize( strlen( dump.data() ) );
 			return dump;
 		}
 
@@ -1381,14 +1384,14 @@ namespace xed
 	inline static result<decoding> decode32( const void* data, size_t length = max_ins_len ) { return decode( compat32, data, length ); }
 	inline static std::vector<decoding> decode32_n( const void* data, size_t length ) { return decode_n( compat32, data, length ); }
 	inline static std::vector<decoding> decode64_n( const void* data, size_t length ) { return decode_n( long64, data, length ); }
-	template <typename T = std::initializer_list<uint8_t>> requires xstd::is_contiguous_iterable_v<T>
-	inline static result<decoding> decode64( T&& container ) { return decode( long64, &*std::begin( container ), std::size( container ) ); }
-	template <typename T = std::initializer_list<uint8_t>> requires xstd::is_contiguous_iterable_v<T>
-	inline static result<decoding> decode32( T&& container ) { return decode( compat32, &*std::begin( container ), std::size( container ) ); }
-	template <typename T = std::initializer_list<uint8_t>> requires xstd::is_contiguous_iterable_v<T>
-	inline static std::vector<decoding> decode64_n( T&& container ) { return decode_n( long64, &*std::begin( container ), std::size( container ) ); }
-	template <typename T = std::initializer_list<uint8_t>> requires xstd::is_contiguous_iterable_v<T>
-	inline static std::vector<decoding> decode32_n( T&& container ) { return decode_n( compat32, &*std::begin( container ), std::size( container ) ); }
+	template <typename T = std::initializer_list<uint8_t>> requires xstd::ContiguousIterable<T>
+	inline static result<decoding> decode64( const T& container ) { return decode( long64, &*std::begin( container ), std::size( container ) * sizeof( xstd::iterable_val_t<T> ) ); }
+	template <typename T = std::initializer_list<uint8_t>> requires xstd::ContiguousIterable<T>
+	inline static result<decoding> decode32( const T& container ) { return decode( compat32, &*std::begin( container ), std::size( container ) * sizeof( xstd::iterable_val_t<T> ) ); }
+	template <typename T = std::initializer_list<uint8_t>> requires xstd::ContiguousIterable<T>
+	inline static std::vector<decoding> decode64_n( const T& container ) { return decode_n( long64, &*std::begin( container ), std::size( container ) * sizeof( xstd::iterable_val_t<T> ) ); }
+	template <typename T = std::initializer_list<uint8_t>> requires xstd::ContiguousIterable<T>
+	inline static std::vector<decoding> decode32_n( const T& container ) { return decode_n( compat32, &*std::begin( container ), std::size( container ) * sizeof( xstd::iterable_val_t<T> ) ); }
 };
 
 // Implement [Rm + I].
