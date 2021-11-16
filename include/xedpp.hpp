@@ -7,7 +7,6 @@ extern "C"
 #include <xstd/small_vector.hpp>
 #include <xstd/assert.hpp>
 #include <xstd/result.hpp>
-#include <xstd/range.hpp>
 #include <xstd/bitwise.hpp>
 #include <xstd/flat_map.hpp>
 #include <xstd/enum_name.hpp>
@@ -15,6 +14,7 @@ extern "C"
 #include <stdint.h>
 #include <string>
 #include <vector>
+#include <ranges>
 #include <unordered_set>
 #include <initializer_list>
 
@@ -876,10 +876,9 @@ namespace xed
 		const xed::operand* operand( size_t n ) const { return ( const xed::operand* ) xed_inst_operand( this, n ); }
 		inline auto operands() const
 		{
-			return xstd::make_range(
-				xstd::numeric_iterator<>{ 0ull }, xstd::numeric_iterator<>{ num_operands() },
-				[ this ] ( size_t n ) { return operand( n ); }
-			);
+			return 
+				std::ranges::views::iota( 0ull, num_operands() ) |
+				std::ranges::views::transform( [ this ] ( size_t n ) { return operand( n ); } );
 		}
 	};
 
