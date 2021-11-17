@@ -877,8 +877,8 @@ namespace xed
 		inline auto operands() const
 		{
 			return 
-				std::ranges::views::iota( 0ull, num_operands() ) |
-				std::ranges::views::transform( [ this ] ( size_t n ) { return operand( n ); } );
+				std::views::iota( 0ull, num_operands() ) |
+				std::views::transform( [ this ] ( size_t n ) { return operand( n ); } );
 		}
 	};
 
