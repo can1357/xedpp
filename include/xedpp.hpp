@@ -1391,6 +1391,20 @@ namespace xed
 	inline static std::vector<decoding> decode64_n( const T& container ) { return decode_n( long64, &*std::begin( container ), std::size( container ) * sizeof( xstd::iterable_val_t<T> ) ); }
 	template <typename T = std::initializer_list<uint8_t>> requires xstd::ContiguousIterable<T>
 	inline static std::vector<decoding> decode32_n( const T& container ) { return decode_n( compat32, &*std::begin( container ), std::size( container ) * sizeof( xstd::iterable_val_t<T> ) ); }
+
+	// Lenght-only decoding.
+	//
+	inline size_t decode_len( const mode_t& mode, const void* data, size_t length = max_ins_len ) 
+	{
+		xed::decoding dec = {};
+		dec.set_mode( mode );
+		if ( xed_ild_decode( &dec, ( const uint8_t* ) data, length ) == XED_ERROR_NONE )
+			return dec.length();
+		else
+			return 0;
+	}
+	inline size_t decode_len64( const void* data, size_t length = max_ins_len ) { return decode_len( long64, data, length ); }
+	inline size_t decode_len32( const void* data, size_t length = max_ins_len ) { return decode_len( compat32, data, length ); }
 };
 
 // Implement [Rm + I].
