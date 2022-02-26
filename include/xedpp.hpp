@@ -976,19 +976,19 @@ namespace xed
 
 		// Encoding details.
 		//
-		bool has_real_rep() const { return xed_operand_values_has_real_rep( this ); }
-		bool has_rep() const { return xed_operand_values_has_rep_prefix( this ); }
-		bool has_repne() const { return xed_operand_values_has_repne_prefix( this ); }
-		bool has_lock() const { return xed_operand_values_has_lock_prefix( this ); }
-		bool has_adrsz_prefix() const { return xed_operand_values_has_address_size_prefix( this ); }
-		bool has_real_opsz_prefix() const { return xed_operand_values_has_operand_size_prefix( this ); }
-		bool has_opsz_prefix() const { return xed_operand_values_has_66_prefix( this ); }
-		bool has_rexw_prefix() const { return xed_operand_values_has_rexw_prefix( this ); }
-		bool has_seg_prefix() const { return xed_operand_values_has_segment_prefix( this ); }
+		bool has_real_rep() const { return inst()->attribute( XED_ATTRIBUTE_REP ) && ( has_rep() || has_repne() ); }
+		bool has_rep() const { return xed3_operand_get_rep( this ) == 3; }
+		bool has_repne() const { return xed3_operand_get_rep( this ) == 2; }
+		bool has_lock() const { return xed3_operand_get_lock( this ) != 0; }
+		bool has_adrsz_prefix() const { return xed3_operand_get_asz( this ) != 0; }
+		bool has_real_opsz_prefix() const { return xed3_operand_get_osz( this ) != 0; }
+		bool has_opsz_prefix() const { return xed3_operand_get_prefix66( this ) != 0; }
+		bool has_rexw_prefix() const { return xed3_operand_get_rexw( this ) != 0; }
+		bool has_seg_prefix() const { return xed3_operand_get_seg_ovd( this ) != 0; }
 		bool has_modrm() const { return xed3_operand_get_has_modrm( this ); }
 		bool has_sib() const { return xed3_operand_get_has_sib( this ); }
-		bool has_br_not_taken_hint() const { return xed_operand_values_branch_not_taken_hint( this ); }
-		bool has_br_taken_hint() const { return xed_operand_values_branch_taken_hint( this ); }
+		bool has_br_not_taken_hint() const { return xed3_operand_get_hint( this ) == 3; }
+		bool has_br_taken_hint() const { return xed3_operand_get_hint( this ) == 4; }
 		bool is_atomic_rmw() const { return xed_operand_values_get_atomic( this ); }
 		bool is_mem_using_default_seg( size_t idx ) const { return xed_operand_values_using_default_segment( this, idx ); }
 		bool is_mem_using_modrm() const { return !xed_operand_values_memop_without_modrm( this ); }
@@ -1013,14 +1013,14 @@ namespace xed
 		iform_t iform() const { return inst()->iform(); }
 		iclass_t iclass() const { return inst()->iclass(); }
 		bool attribute( attribute_t k ) const { return inst()->attribute( k ); }
-		const flag_info_t* flag_info() const { return xed_decoded_inst_get_rflags_info( this ); } // Seems to only use inst.
+		const flag_info_t* flag_info() const { return xed_decoded_inst_get_rflags_info( this ); }
 		bool uses_flags() const { return xed_decoded_inst_uses_rflags( this ); }
 		void set_iclass( iclass_t v ) { xed_operand_values_set_iclass( this, v ); }
 
 		// Mode properties.
 		//
-		bool is_long_mode() const { return xed_operand_values_get_long_mode( this ); }
-		bool is_real_mode() const { return xed_operand_values_get_real_mode( this ); }
+		bool is_long_mode() const { return xed3_operand_get_mode( this ) == 2; }
+		bool is_real_mode() const { return xed3_operand_get_realmode( this ) != 0; }
 		bitcnt_t machine_mode_bits() const { return xed_decoded_inst_get_machine_mode_bits( this ); }
 		void set_mode( const xed_state_t& state ) 
 		{ 
@@ -1105,9 +1105,10 @@ namespace xed
 
 		// Operand properties.
 		//
-		bool has_relbr() const { return xed_operand_values_has_branch_displacement( this ); }
+		bool has_relbr() const { return relbr_width_bits() != 0; }
 		bool has_disp() const { return xed_operand_values_has_displacement( this ); }
-		bool has_imm() const { return xed_operand_values_has_immediate( this ); }
+		bool has_imm() const { return imm_width_bits() != 0; }
+		bool has_imm1() const { return xed3_operand_get_imm1( this ); }
 		size_t num_operands() const { return inst()->num_operands(); }
 		const xed::operand* operand( size_t n ) const { return inst()->operand( n ); }
 		decltype( auto ) operands() const { return inst()->operands(); }
@@ -1128,10 +1129,10 @@ namespace xed
 
 		// Immediate operands.
 		//
-		bool is_imm0_signed() const { return xed_operand_values_get_immediate_is_signed( this ); }
+		bool is_imm0_signed() const { return xed3_operand_get_imm0signed( this ); }
 		int64_t imm0_value() const { return xed_operand_values_get_immediate_int64( this ); }
-		uint64_t imm0u_value() const { return xed_operand_values_get_immediate_uint64( this ); }
-		uint8_t imm1_value() const { return xed_operand_values_get_second_immediate( this ); }
+		uint64_t imm0u_value() const { return xed3_operand_get_uimm0( this ); }
+		uint8_t imm1_value() const { return xed3_operand_get_imm1( this ); }
 		xed::imm0 imm0() const { return { imm0_value(), imm_width_bits() }; }
 		xed::imm1 imm1() const { return { imm1_value() }; }
 		xed::imm0u imm0u() const { return { imm0u_value(), imm_width_bits() }; }
@@ -1142,9 +1143,9 @@ namespace xed
 
 		// Relative branch operand.
 		//
-		size_t relbr_width() const { return xed_operand_values_get_branch_displacement_length( this ); }
-		bitcnt_t relbr_width_bits() const { return xed_operand_values_get_branch_displacement_length_bits( this ); }
-		int32_t relbr_value() const { return xed_operand_values_get_branch_displacement_int32( this ); }
+		size_t relbr_width() const { return relbr_width_bits(); }
+		bitcnt_t relbr_width_bits() const { return xed3_operand_get_brdisp_width( this ); }
+		int32_t relbr_value() const { return relbr_width_bits() ? xed3_operand_get_disp( this ) : 0; }
 		xed::relbr relbr() const { return { relbr_value(), relbr_width_bits() }; }
 		void set_relbr( const xed::relbr& r ) { xed_operand_values_set_branch_displacement_bits( this, r.value(), r.width_bits() ); }
 
