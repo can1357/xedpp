@@ -2,6 +2,7 @@
 extern "C"
 {
 	#include <xed/xed-interface.h>
+	#include <xed/xed-operand-accessors.h>
 };
 #include <xstd/intrinsics.hpp>
 #include <xstd/small_vector.hpp>
@@ -72,6 +73,7 @@ namespace xstd
 
 extern "C" {
 	extern const xed_attributes_t xed_attributes[ 1 ];
+	extern const xed_iform_info_t xed_iform_db[ 1 ];
 };
 
 // Declare a simple c++ wrapper around Intel XED.
@@ -343,30 +345,26 @@ namespace xed
 	
 	inline iclass_t iform_to_iclass( iform_t iform )
 	{
-		const xed_iform_info_t* ii = xed_iform_map( iform );
-		if ( ii )
-			return ( iclass_t ) ii->iclass;
+		if ( iform < XED_IFORM_LAST )
+			return ( iclass_t ) xed_iform_db[ iform ].iclass;
 		return XED_ICLASS_INVALID;
 	}
 	inline category_t iform_to_category( iform_t iform )
 	{
-		const xed_iform_info_t* ii = xed_iform_map( iform );
-		if ( ii )
-			return ( category_t ) ii->category;
+		if ( iform < XED_IFORM_LAST )
+			return ( category_t ) xed_iform_db[ iform ].category;
 		return XED_CATEGORY_INVALID;
 	}
 	inline extension_t iform_to_extension( iform_t iform )
 	{
-		const xed_iform_info_t* ii = xed_iform_map( iform );
-		if ( ii )
-			return ( extension_t ) ii->extension;
+		if ( iform < XED_IFORM_LAST )
+			return ( extension_t ) xed_iform_db[ iform ].extension;
 		return XED_EXTENSION_INVALID;
 	}
 	inline isa_set_t iform_to_isa_set( iform_t iform )
 	{
-		const xed_iform_info_t* ii = xed_iform_map( iform );
-		if ( ii )
-			return ( isa_set_t ) ii->isa_set;
+		if ( iform < XED_IFORM_LAST )
+			return ( isa_set_t ) xed_iform_db[ iform ].isa_set;
 		return XED_ISA_SET_INVALID;
 	}
 
@@ -1024,7 +1022,48 @@ namespace xed
 		bool is_long_mode() const { return xed_operand_values_get_long_mode( this ); }
 		bool is_real_mode() const { return xed_operand_values_get_real_mode( this ); }
 		bitcnt_t machine_mode_bits() const { return xed_decoded_inst_get_machine_mode_bits( this ); }
-		void set_mode( const xed_state_t& state ) { xed_operand_values_set_mode( this, &state ); }
+		void set_mode( const xed_state_t& state ) 
+		{ 
+			switch ( state.mmode )
+			{
+				case XED_MACHINE_MODE_LONG_64:
+					xed3_operand_set_realmode( this, 0 );
+					xed3_operand_set_mode( this, 2 );
+					break;
+				case XED_MACHINE_MODE_LEGACY_32:
+				case XED_MACHINE_MODE_LONG_COMPAT_32:
+					xed3_operand_set_realmode( this, 0 );
+					xed3_operand_set_mode( this, 1 );
+					break;
+				case XED_MACHINE_MODE_REAL_16:
+					xed3_operand_set_realmode( this, 1 );
+					xed3_operand_set_mode( this, 0 );
+					break;
+				case XED_MACHINE_MODE_REAL_32:
+					xed3_operand_set_realmode( this, 1 );
+					xed3_operand_set_mode( this, 1 );
+					break;
+				case XED_MACHINE_MODE_LEGACY_16:
+				case XED_MACHINE_MODE_LONG_COMPAT_16:
+					xed3_operand_set_realmode( this, 0 );
+					xed3_operand_set_mode( this, 0 );
+					break;
+			}
+			switch ( state.stack_addr_width )
+			{
+				case XED_ADDRESS_WIDTH_16b:
+					xed3_operand_set_smode( this, 0 );
+					break;
+				case XED_ADDRESS_WIDTH_32b:
+					xed3_operand_set_smode( this, 1 );
+					break;
+				case XED_ADDRESS_WIDTH_64b:
+					xed3_operand_set_smode( this, 2 );
+					break;
+				default:
+					break;
+			}
+		}
 
 		chip_t input_chip() const { return xed_decoded_inst_get_input_chip( this ); }
 		void set_input_chip( chip_t c ) { xed_decoded_inst_set_input_chip( this, c ); }
