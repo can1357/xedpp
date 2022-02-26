@@ -25,17 +25,24 @@ extern "C"
 //
 namespace xstd
 {
-	#define MAP_XED_ENUM( etype )                       \
-	template<>                                          \
-	struct enum_name<xed_##etype##_t>                   \
-	{                                                   \
-	    static std::string resolve( xed_##etype##_t n ) \
-	    {                                               \
-	        if ( n <= xed_##etype##_t_last() )          \
-	            return xed_##etype##_t2str( n );        \
-	        else                                        \
-	            return std::to_string( n );             \
-	    }                                               \
+	#define MAP_XED_ENUM( etype )                               \
+	template<>                                                  \
+	struct enum_name<xed_##etype##_t>                           \
+	{                                                           \
+		static std::string_view try_resolve( xed_##etype##_t n ) \
+		{																		   \
+			if ( n <= xed_##etype##_t_last() )						   \
+				return xed_##etype##_t2str( n );                   \
+			else																   \
+				return {};													   \
+		}																		   \
+	    static std::string resolve( xed_##etype##_t n )         \
+	    {                                                       \
+	        if ( n <= xed_##etype##_t_last() )                  \
+	            return xed_##etype##_t2str( n );                \
+	        else                                                \
+	            return std::to_string( n );                     \
+	    }                                                       \
 	};														 
 	MAP_XED_ENUM( reg_enum                     );
 	MAP_XED_ENUM( reg_class_enum               );
@@ -63,6 +70,10 @@ namespace xstd
 #undef MAP_XED_ENUM
 };
 
+extern "C" {
+	extern const xed_attributes_t xed_attributes[ 1 ];
+};
+
 // Declare a simple c++ wrapper around Intel XED.
 //
 namespace xed
@@ -81,6 +92,7 @@ namespace xed
 	using reg_t =             xed_reg_enum_t;
 	using reg_class_t =       xed_reg_class_enum_t;
 	using error_t =           xed_error_enum_t;
+	using attribute_set_t =   xed_attributes_t;
 	
 	using category_t =        xed_category_enum_t;
 	using iclass_t =          xed_iclass_enum_t;
@@ -328,6 +340,36 @@ namespace xed
 		XED_ICLASS_IRET, XED_ICLASS_IRETD, XED_ICLASS_IRETQ,
 		XED_ICLASS_SYSRET, XED_ICLASS_SYSRET64, XED_ICLASS_SYSRET_AMD
 	};
+	
+	inline iclass_t iform_to_iclass( iform_t iform )
+	{
+		const xed_iform_info_t* ii = xed_iform_map( iform );
+		if ( ii )
+			return ( iclass_t ) ii->iclass;
+		return XED_ICLASS_INVALID;
+	}
+	inline category_t iform_to_category( iform_t iform )
+	{
+		const xed_iform_info_t* ii = xed_iform_map( iform );
+		if ( ii )
+			return ( category_t ) ii->category;
+		return XED_CATEGORY_INVALID;
+	}
+	inline extension_t iform_to_extension( iform_t iform )
+	{
+		const xed_iform_info_t* ii = xed_iform_map( iform );
+		if ( ii )
+			return ( extension_t ) ii->extension;
+		return XED_EXTENSION_INVALID;
+	}
+	inline isa_set_t iform_to_isa_set( iform_t iform )
+	{
+		const xed_iform_info_t* ii = xed_iform_map( iform );
+		if ( ii )
+			return ( isa_set_t ) ii->isa_set;
+		return XED_ISA_SET_INVALID;
+	}
+
 	inline constexpr bool is_jcc( iclass_t iclass )
 	{
 		return std::find( std::begin( jcc_list ), std::end( jcc_list ), iclass ) != std::end( jcc_list );
@@ -860,19 +902,25 @@ namespace xed
 	{
 		// Properties.
 		//
-		uint8_t cpl() const { return xed_inst_cpl( this ); }
-		iform_t iform() const { return xed_inst_iform_enum( this ); }
-		iclass_t iclass() const { return xed_inst_iclass( this ); }
-		category_t category() const { return xed_inst_category( this ); }
-		extension_t extension() const { return xed_inst_extension( this ); }
-		isa_set_t isa_set() const { return xed_inst_isa_set( this ); }
-		uint32_t flag_info_index() const { return xed_inst_flag_info_index( this ); }
-		bool attribute( attribute_t k ) const { return xed_inst_get_attribute( this, k ); }
-		exception_t exception() const { return xed_inst_exception( this ); }
+		uint8_t cpl() const { return this->_cpl; }
+		iform_t iform() const { return ( iform_t ) this->_iform_enum; }
+		iclass_t iclass() const { return iform_to_iclass( iform() ); }
+		category_t category() const { return iform_to_category( iform() ); }
+		extension_t extension() const { return iform_to_extension( iform() ); }
+		isa_set_t isa_set() const { return iform_to_isa_set( iform() ); }
+		uint32_t flag_info_index() const { return this->_flag_info_index; }
+		const attribute_set_t& attribute_set() const { return xed_attributes[ this->_attributes ]; }
+		bool attribute( attribute_t k ) const 
+		{ 
+			auto& as = attribute_set();
+			auto asi = ( k & 64 ) ? as.a2 : as.a1;
+			return asi & ( 1ull << ( k & 63 ) );
+		}
+		exception_t exception() const { return ( exception_t ) this->_exceptions; }
 
 		// Operands.
 		//
-		size_t num_operands() const { return xed_inst_noperands( this ); }
+		size_t num_operands() const { return this->_noperands; }
 		const xed::operand* operand( size_t n ) const { return ( const xed::operand* ) xed_inst_operand( this, n ); }
 		inline auto operands() const
 		{
@@ -891,16 +939,22 @@ namespace xed
 	{
 		// Tag-dispatching based typed initializations.
 		//
-		inline operand_values( dec_tag_t ) { xed_decoded_inst_zero( this ); }
-		inline operand_values( enc_tag_t ) { xed_encoder_request_zero( this ); }
+		inline operand_values() 
+		{
+			constexpr size_t N = sizeof( xed_operand_values_t );
+			static_assert( !( N & 7 ), "Invalid size." );
+			for ( size_t n = 0; n != (N/8); n++ )
+				( ( uint64_t* ) this )[ n ] = 0;
+		}
+		inline operand_values( dec_tag_t ) : operand_values() {}
+		inline operand_values( enc_tag_t ) : operand_values() {}
 		inline operand_values( xed_decoded_inst_t ins, enc_tag_t ) : xed_operand_values_t( ins ) { xed_encoder_request_init_from_decode( this ); }
 
-		// Default copy/move/init.
+		// Default copy/move.
 		//
-		inline operand_values() { xed_operand_values_init( this ); }
-		inline operand_values( operand_values&& ) = default;
+		inline operand_values( operand_values&& ) noexcept = default;
 		inline operand_values( const operand_values& ) = default;
-		inline operand_values& operator=( operand_values&& ) = default;
+		inline operand_values& operator=( operand_values&& ) noexcept = default;
 		inline operand_values& operator=( const operand_values& ) = default;
 
 		// String conversion.
@@ -1153,7 +1207,7 @@ namespace xed
 
 		// Instruction properties.
 		//
-		size_t length() const { return xed_decoded_inst_get_length( this ); }
+		size_t length() const { return this->_decoded_length; }
 		uint8_t at( size_t n ) const { return xed_decoded_inst_get_byte( this, n ); }
 		uint8_t operator[]( size_t n ) const { return at( n ); }
 
