@@ -448,12 +448,13 @@ namespace xed
 		return xed_isa_set_is_valid_for_chip( isa, chip );
 	}
 
-	// Fast NOP encoding.
+	// Wrap faster XED APIs.
 	//
 	inline result<> nop( void* out, size_t length )
 	{
 		return result<>{ ( status ) xed_encode_nop( ( uint8_t* ) out, length ) };
 	}
+
 
 	// Wrapped operand.
 	//
@@ -1255,6 +1256,12 @@ namespace xed
 		//
 		size_t mem_adr_width( size_t idx ) const { return xed_decoded_inst_get_memop_address_width( this, idx ); }
 		bitcnt_t mem_adr_width_bits( size_t idx ) const { return mem_adr_width( idx ) * 8; }
+
+		// Patch API.
+		//
+		void patch_disp( uint8_t* at, xed::disp value ) const { xed_patch_disp( ( xed_decoded_inst_t* ) this, at, value ); }
+		void patch_relbr( uint8_t* at, xed::relbr value ) const { xed_patch_relbr( ( xed_decoded_inst_t* ) this, at, value ); }
+		void patch_imm0( uint8_t* at, xed::imm0 value ) const { xed_patch_imm0( ( xed_decoded_inst_t* ) this, at, value ); }
 	};
 	// Wrapped encoder request.
 	//
