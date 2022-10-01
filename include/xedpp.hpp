@@ -1141,6 +1141,7 @@ namespace xed
 		bitcnt_t imm_width_bits() const { return xed3_operand_get_imm_width( this ); }
 		void set_imm0( const xed::imm0& v ) { xed_operand_values_set_immediate_signed_bits( this, v.value(), v.width_bits() ); }
 		void set_imm0u( const xed::imm0u& v ) { xed_operand_values_set_immediate_unsigned_bits( this, v.value(), v.width_bits() ); }
+		void set_imm1( const xed::imm1& v ) { xed3_operand_set_imm1( this, v.value() ); }
 
 		// Relative branch operand.
 		//
@@ -1184,7 +1185,7 @@ namespace xed
 		void set_mem_seg( size_t idx, reg_t v ) { xed_operand_values_set_seg_reg( this, idx, v ); }
 		void set_mem_base( size_t idx, reg_t v ) { xed_operand_values_set_base_reg( this, idx, v ); }
 		void set_mem_index( size_t idx, reg_t v ) { fassert( idx == 0 ); xed_operand_values_set_index_reg( this, idx, v ); }
-		void set_mem_disp( size_t idx, const xed::disp& d ) { fassert( idx == 0 ); xed_operand_values_set_branch_displacement_bits( this, d.value(), d.displacement_bits ); }
+		void set_mem_disp( size_t idx, const xed::disp& d ) { fassert( idx == 0 ); xed_operand_values_set_memory_displacement_bits( this, d.value(), d.displacement_bits ); }
 		void set_mem_scale( size_t idx, size_t scale ) { fassert( idx == 0 ); xed_operand_values_set_scale( this, idx, scale ); }
 		void set_mem( size_t idx, const xed::mem& m )
 		{
