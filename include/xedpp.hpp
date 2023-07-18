@@ -930,8 +930,7 @@ namespace xed
 		isa_set_t isa_set() const { return iform_to_isa_set( iform() ); }
 		uint32_t flag_info_index() const { return this->_flag_info_index; }
 		const attribute_set_t& attribute_set() const { return xed_attributes[ this->_attributes ]; }
-		bool attribute( attribute_t k ) const 
-		{ 
+		bool attribute( attribute_t k ) const {
 			auto& as = attribute_set();
 			auto asi = ( k & 64 ) ? as.a2 : as.a1;
 			return asi & ( 1ull << ( k & 63 ) );
@@ -942,9 +941,8 @@ namespace xed
 		//
 		size_t num_operands() const { return this->_noperands; }
 		const xed::operand* operand( size_t n ) const { return ( const xed::operand* ) xed_inst_operand( this, n ); }
-		inline auto operands() const
-		{
-			return 
+		inline auto operands() const {
+			return
 				std::views::iota( 0ull, num_operands() ) |
 				std::views::transform( [ this ] ( size_t n ) { return operand( n ); } );
 		}
@@ -1334,125 +1332,35 @@ namespace xed
 
 		// Encoding API.
 		//
-		result<xstd::small_vector<uint8_t, max_ins_len>> encode() { return encode( this ); }
-		result<xstd::small_vector<uint8_t, max_ins_len>> encode( encoding* o = nullptr ) const 
+		result<xstd::small_vector<uint8_t, max_ins_len>> encode()
 		{
+			// Allocate the result bytes.
+			//
 			result<xstd::small_vector<uint8_t, max_ins_len>> res = {};
-			auto& out = res.result.emplace();
-			out.resize( max_ins_len );
 
-			// Try every possible combination and if none works fail.
+			// First try with no changes, if it fails, try every possible combination.
 			//
-			for ( auto n : { 0, 64, 32, 16 } )
-			{
-				if ( n == 64 && !is_long_mode() ) continue;
-
-				encoding copy = *this;
-				if ( n )
-					copy.set_eff_op_width_bits( n );
-
-				uint32_t len = 0;
-				auto status = xed_encode( &copy, out.data(), max_ins_len, ( uint32_t* ) &len );
-				if ( res.status == XED_ERROR_LAST ) res.status = status;
-
-				if ( status == XED_ERROR_NONE )
-				{
-					if ( o ) *o = copy;
-					res.status = status;
-					out.resize( len );
-					break;
-				}
-			}
-			return res;
-		}
-		result<xstd::small_vector<uint8_t, max_ins_len>> encode( adjust_rip_t ) const
-		{
-			// Tries to replace the encodded instruction's relative displacement.
-			// - Takes in two sets of lengths because XED may resize the displacement length
-			//   in certain cases where rel8 cannot be used, for instance JMP [rip+rel32].
-			//
-			static constexpr uint32_t magic = 0x66776677;
-			auto try_adjust = [ & ]( xstd::small_vector<uint8_t, max_ins_len>& vec,
-											 int64_t req, uint32_t olen, uint32_t len )
-			{
-				// Fail if the new value overflows.
-				//
-				req -= vec.size();
-				if ( xstd::sign_extend( req, len * 8 ) != req )
-					return false;
-
-				// Try to find the magic value.
-				//
-				for ( int n = ( int ) vec.size() - len; n != 0; n-- )
-				{
-					uint64_t nval = 0;
-					memcpy( &nval, &vec[ n ], len );
-					if ( nval == ( magic & xstd::fill_bits( olen * 8 ) ) )
-					{
-						memcpy( &vec[ n ], &req, len );
-						return true;
+			uint32_t len = 0;
+			auto&    out = res.result.emplace();
+			res.status = xed_encode( this, out.space, max_ins_len, ( uint32_t* ) &len );
+			if ( res.status != XED_ERROR_NONE ) {
+				for ( uint32_t n = is_long_mode() ? 64 : 32; n >= 16; n >>= 1 ) {
+					this->set_eff_op_width_bits( n );
+					auto status = xed_encode( this, out.space, max_ins_len, ( uint32_t* ) &len );
+					if ( status == XED_ERROR_NONE ) {
+						res.status = XED_ERROR_NONE;
+						break;
 					}
 				}
-				return false;
-			};
-
-			// Make a copy.
-			//
-			result<xstd::small_vector<uint8_t, max_ins_len>> res = {};
-			encoding copy = *this;
-
-			// Handle relbr:
-			//
-			if ( has_relbr() )
-			{
-				int64_t p = relbr();
-
-				if ( relbr_width() == 1 )
-				{
-					copy.set_relbr( { magic & xstd::fill_bits( 8 ), 8 } );
-					res = copy.encode();
-					if ( res && try_adjust( *res, p, 1, copy.relbr_width() ) )
-						return res;
-				}
-
-				copy.set_relbr( { magic, 32 } );
-				res = copy.encode();
-				if ( !res )
-					return res;
-				if ( try_adjust( *res, p, 4, 4 ) )
-					return res;
-				else
-					return {};
 			}
-			// Only mem0 is allowed displacement, so if it's rip relative adjust that:
-			//
-			else if ( num_mem_operands() >= 1 && is_ip( mem_base( 0 ) ) )
-			{
-				int64_t p = mem_disp_value( 0 );
-
-				if ( mem_disp_width( 0 ) == 1 )
-				{
-					copy.set_mem_disp( 0, { magic & xstd::fill_bits( 8 ), 8 } );
-					res = copy.encode();
-					if ( res && try_adjust( *res, p, 1, copy.mem_disp_width( 0 ) ) )
-						return res;
-				}
-
-				copy.set_mem_disp( 0, { magic, 32 } );
-				res = copy.encode();
-				if ( !res )
-					return res;
-				if ( try_adjust( *res, p, 4, 4 ) )
-					return res;
-				else
-					return {};
-			}
-			// Nothing to adjust, invalid request.
-			//
-			else
-			{
-				return {};
-			}
+			out.length = len & 15;
+			return res;
+		}
+		result<xstd::small_vector<uint8_t, max_ins_len>> encode() const {
+			auto prev = eff_op_width_bits();
+			auto result = const_cast< encoding* >( this )->encode();
+			const_cast< encoding* >( this )->set_eff_op_width_bits( prev );
+			return result;
 		}
 	};
 
