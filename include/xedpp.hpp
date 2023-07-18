@@ -1366,26 +1366,19 @@ namespace xed
 
 	// Encoding from iclass + operands.
 	//
-	template<typename... Tx>
-	inline encoding encode( const mode_t& mode, iclass_t icl, Tx&&... ops )
+	inline encoding vencode( const mode_t& mode, iclass_t icl, std::initializer_list<xed_encoder_operand_t> ops )
 	{
-		std::initializer_list<xed_encoder_operand_t> opa = { ops... };
 		xed_encoder_instruction_t inst = {};
-		xed_inst( &inst, mode, icl, 0, opa.size(), opa.begin() );
+		xed_inst( &inst, mode, icl, 0, ops.size(), ops.begin() );
 		encoding enc_req = { mode };
 		xed_convert_to_encoder_request( &enc_req, &inst );
 		return enc_req;
 	}
-	template<typename... Tx>
-	inline encoding encode64( iclass_t icl, Tx&&... ops )
-	{
-		return encode( long64, icl, std::forward<Tx>( ops )... );
-	}
-	template<typename... Tx>
-	inline encoding encode32( iclass_t icl, Tx&&... ops )
-	{
-		return encode( compat32, icl, std::forward<Tx>( ops )... );
-	}
+	inline encoding vencode64( iclass_t icl, std::initializer_list<xed_encoder_operand_t> ops ) { return vencode( long64, icl, ops ); }
+	inline encoding vencode32( iclass_t icl, std::initializer_list<xed_encoder_operand_t> ops ) { return vencode( compat32, icl, ops ); }
+	template<typename... Tx> inline encoding encode( const mode_t& mode, iclass_t icl, Tx&&... ops ) { return vencode( mode, icl, { ops... } ); }
+	template<typename... Tx> inline encoding encode64( iclass_t icl, Tx&&... ops ) { return encode( long64, icl, std::forward<Tx>( ops )... ); }
+	template<typename... Tx> inline encoding encode32( iclass_t icl, Tx&&... ops ) { return encode( compat32, icl, std::forward<Tx>( ops )... ); }
 
 	// Decoding.
 	//
