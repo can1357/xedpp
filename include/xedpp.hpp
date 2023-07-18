@@ -448,13 +448,34 @@ namespace xed
 		return xed_isa_set_is_valid_for_chip( isa, chip );
 	}
 
-	// Wrap faster XED APIs.
+	// Nopper.
 	//
-	inline result<> nop( void* out, size_t length )
+	static constexpr size_t max_nop_length = 9;
+	static constexpr uint8_t nop_table[ max_nop_length + 1 ][ max_nop_length ] = {
+		{},
+		{ 0x90 },
+		{ 0x66, 0x90 },
+		{ 0x0F, 0x1F, 0x00 },
+		{ 0x0F, 0x1F, 0x40, 0x00 },
+		{ 0x0F, 0x1F, 0x44, 0x00, 0x00 },
+		{ 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 },
+		{ 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00 },
+		{ 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 },
+		{ 0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 },
+	};
+	inline void nop( void* out, size_t length )
 	{
-		return result<>{ ( status ) xed_encode_nop( ( uint8_t* ) out, length ) };
+		uint8_t* ptr = ( uint8_t* ) out;
+		for ( ; length > max_nop_length; length -= max_nop_length, ptr += max_nop_length ) {
+			memcpy( ptr, &nop_table[ max_nop_length ], max_nop_length );
+		}
+		memcpy( ptr, &nop_table[ length ], length );
 	}
+	inline void nop( void* from, void* to )
+	{
+		nop( from, ( uintptr_t ) to - ( uintptr_t ) from );
 
+	}
 
 	// Wrapped operand.
 	//
