@@ -1344,8 +1344,9 @@ namespace xed
 			auto&    out = res.result.emplace();
 			res.status = xed_encode( this, out.space, max_ins_len, ( uint32_t* ) &len );
 			if ( res.status != XED_ERROR_NONE ) {
-				for ( uint32_t n = is_long_mode() ? 64 : 32; n >= 16; n >>= 1 ) {
-					this->set_eff_op_width_bits( n );
+				for ( int8_t n = 3; n >= 0; n-- ) {
+					this->_operands.error = 0;
+					this->_operands.eosz =  ( uint8_t ) n;
 					auto status = xed_encode( this, out.space, max_ins_len, ( uint32_t* ) &len );
 					if ( status == XED_ERROR_NONE ) {
 						res.status = XED_ERROR_NONE;
