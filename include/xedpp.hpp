@@ -9,7 +9,6 @@ extern "C"
 #include <xstd/assert.hpp>
 #include <xstd/result.hpp>
 #include <xstd/bitwise.hpp>
-#include <xstd/flat_map.hpp>
 #include <xstd/enum_name.hpp>
 #include <xstd/numeric_range.hpp>
 #include <stdint.h>
@@ -126,23 +125,6 @@ namespace xed
 	// Constants.
 	//
 	static constexpr size_t max_ins_len = 15;
-
-	// Table of GP regs.
-	//
-	inline constexpr xstd::sorted_inplace_map<reg_t, std::monostate, 8> gp_regs_16 = {
-		{ XED_REG_AX,  {} }, { XED_REG_BX,  {} }, { XED_REG_CX,  {} }, { XED_REG_DX,  {} },
-		{ XED_REG_SI,  {} }, { XED_REG_DI,  {} }, { XED_REG_BX,  {} }, { XED_REG_BP,  {} },
-	};
-	inline constexpr xstd::sorted_inplace_map<reg_t, std::monostate, 8> gp_regs_32 = {
-		{ XED_REG_EAX, {} }, { XED_REG_EBX, {} }, { XED_REG_ECX, {} }, { XED_REG_EDX, {} },
-		{ XED_REG_ESI, {} }, { XED_REG_EDI, {} }, { XED_REG_EBX, {} }, { XED_REG_EBP, {} },
-	};
-	inline constexpr xstd::sorted_inplace_map<reg_t, std::monostate, 16> gp_regs_64 = {
-		{ XED_REG_RAX, {} }, { XED_REG_RBX, {} }, { XED_REG_RCX, {} }, { XED_REG_RDX, {} },
-		{ XED_REG_RSI, {} }, { XED_REG_RDI, {} }, { XED_REG_RBX, {} }, { XED_REG_RBP, {} },
-		{ XED_REG_R8,  {} }, { XED_REG_R9,  {} }, { XED_REG_R10, {} }, { XED_REG_R11, {} }, 
-		{ XED_REG_R12, {} }, { XED_REG_R13, {} }, { XED_REG_R14, {} }, { XED_REG_R15, {} },
-	};
 
 	// Register properties.
 	//
