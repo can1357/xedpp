@@ -134,6 +134,7 @@ namespace xed
 	inline constexpr bool is_xmm( reg_t r ) { return XED_REG_XMM_FIRST <= r && r <= XED_REG_XMM_LAST; }
 	inline constexpr bool is_ymm( reg_t r ) { return XED_REG_YMM_FIRST <= r && r <= XED_REG_YMM_LAST; }
 	inline constexpr bool is_zmm( reg_t r ) { return XED_REG_ZMM_FIRST <= r && r <= XED_REG_ZMM_LAST; }
+	inline constexpr bool is_vector( reg_t r ) { return is_xmm( r ) || is_ymm( r ) || is_zmm( r ); }
 	inline constexpr bool is_mmx( reg_t r ) { return XED_REG_MMX0 <= r && r <= XED_REG_MMX7; }
 	inline constexpr bool is_fpu( reg_t r ) { return XED_REG_X87_FIRST <= r && r <= XED_REG_X87_LAST; }
 	inline constexpr bool is_segment_selector( reg_t r ) { return XED_REG_SR_FIRST <= r && r <= XED_REG_SR_LAST; }
@@ -144,6 +145,7 @@ namespace xed
 	inline constexpr bool is_gpr16( reg_t r ) { return XED_REG_GPR16_FIRST <= r && r <= XED_REG_GPR16_LAST; }
 	inline constexpr bool is_gpr8h( reg_t r ) { return XED_REG_GPR8h_FIRST <= r && r <= XED_REG_GPR8h_LAST; }
 	inline constexpr bool is_gpr8( reg_t r ) { return XED_REG_GPR8_FIRST <= r && r <= XED_REG_GPR8_LAST; }
+	inline constexpr bool is_gpr( reg_t r ) { return is_gpr64( r ) || is_gpr32( r ) || is_gpr16( r ) || is_gpr8( r ); }
 	inline bitcnt_t register_bit_width( reg_t r, bool is_long = true )
 	{
 		if ( is_long )
@@ -986,6 +988,7 @@ namespace xed
 		bool has_real_opsz_prefix() const { return xed3_operand_get_osz( this ) != 0; }
 		bool has_opsz_prefix() const { return xed3_operand_get_prefix66( this ) != 0; }
 		bool has_rexw_prefix() const { return xed3_operand_get_rexw( this ) != 0; }
+		bool has_vex_prefix() const { return xed3_operand_get_vex_prefix( this ) != 0; }
 		bool has_seg_prefix() const { return xed3_operand_get_seg_ovd( this ) != 0; }
 		bool has_modrm() const { return xed3_operand_get_has_modrm( this ); }
 		bool has_sib() const { return xed3_operand_get_has_sib( this ); }
@@ -1134,6 +1137,7 @@ namespace xed
 		bool is_imm0_signed() const { return xed3_operand_get_imm0signed( this ); }
 		int64_t imm0_value() const { return xed_operand_values_get_immediate_int64( this ); }
 		uint64_t imm0u_value() const { return xed3_operand_get_uimm0( this ); }
+		uint64_t imm1u_value() const { return xed3_operand_get_uimm1( this ); }
 		uint8_t imm1_value() const { return xed3_operand_get_imm1( this ); }
 		xed::imm0 imm0() const { return { imm0_value(), imm_width_bits() }; }
 		xed::imm1 imm1() const { return { imm1_value() }; }
