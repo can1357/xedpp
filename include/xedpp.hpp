@@ -321,83 +321,69 @@ namespace xed
 	};
 	static constexpr iclass_t ret_list[] = {
 		XED_ICLASS_RET_NEAR, XED_ICLASS_RET_FAR,
-	};
-	static constexpr iclass_t sret_list[] = {
 		XED_ICLASS_IRET, XED_ICLASS_IRETD, XED_ICLASS_IRETQ,
 		XED_ICLASS_SYSRET, XED_ICLASS_SYSRET64, XED_ICLASS_SYSRET_AMD
 	};
-	
-	inline iclass_t iform_to_iclass( iform_t iform )
-	{
+
+	inline iclass_t iform_to_iclass( iform_t iform ) {
 		if ( iform < XED_IFORM_LAST )
-			return ( iclass_t ) xed_iform_db[ iform ].iclass;
+			return (iclass_t) xed_iform_db[ iform ].iclass;
 		return XED_ICLASS_INVALID;
 	}
-	inline category_t iform_to_category( iform_t iform )
-	{
+	inline category_t iform_to_category( iform_t iform ) {
 		if ( iform < XED_IFORM_LAST )
-			return ( category_t ) xed_iform_db[ iform ].category;
+			return (category_t) xed_iform_db[ iform ].category;
 		return XED_CATEGORY_INVALID;
 	}
-	inline extension_t iform_to_extension( iform_t iform )
-	{
+	inline extension_t iform_to_extension( iform_t iform ) {
 		if ( iform < XED_IFORM_LAST )
-			return ( extension_t ) xed_iform_db[ iform ].extension;
+			return (extension_t) xed_iform_db[ iform ].extension;
 		return XED_EXTENSION_INVALID;
 	}
-	inline isa_set_t iform_to_isa_set( iform_t iform )
-	{
+	inline isa_set_t iform_to_isa_set( iform_t iform ) {
 		if ( iform < XED_IFORM_LAST )
-			return ( isa_set_t ) xed_iform_db[ iform ].isa_set;
+			return (isa_set_t) xed_iform_db[ iform ].isa_set;
 		return XED_ISA_SET_INVALID;
 	}
-
-	inline constexpr bool is_jcc( iclass_t iclass )
-	{
-		return std::find( std::begin( jcc_list ), std::end( jcc_list ), iclass ) != std::end( jcc_list );
+	inline constexpr bool is_jcc( iclass_t iclass ) {
+		for ( auto& e : jcc_list )
+			if ( e == iclass ) return true;
+		return false;
 	}
-	inline constexpr iclass_t reverse_jcc( iclass_t iclass )
-	{
+	inline constexpr bool is_uret( iclass_t iclass ) {
+		return iclass == XED_ICLASS_RET_NEAR || iclass == XED_ICLASS_RET_FAR;
+	}
+	inline constexpr bool is_call( iclass_t iclass ) {
+		return iclass == XED_ICLASS_CALL_NEAR || iclass == XED_ICLASS_CALL_FAR;
+	}
+	inline constexpr bool is_ret( iclass_t iclass ) {
+		for ( auto& e : ret_list )
+			if ( e == iclass ) 
+				return true;
+		return false;
+	}
+	inline constexpr bool is_jmp( iclass_t iclass ) {
+		return iclass == XED_ICLASS_JMP || iclass == XED_ICLASS_JMP_FAR;
+	}
+	inline constexpr bool is_branch( iclass_t iclass ) {
+		return is_jmp( iclass ) || is_ret( iclass ) || is_call( iclass ) || is_jcc( iclass );
+	}
+	inline constexpr iclass_t reverse_jcc( iclass_t iclass ) {
 		constexpr auto lim = std::end( jcc_list ) - 2;
-		if ( auto it = std::find( std::begin( jcc_list ), lim, iclass ); it != lim )
-		{
+		if ( auto it = std::find( std::begin( jcc_list ), lim, iclass ); it != lim ) {
 			size_t idx = ( it - &jcc_list[ 0 ] );
 			return jcc_list[ idx ^ 1 ];
 		}
 		return XED_ICLASS_INVALID;
 	}
-	inline constexpr bool is_sret( iclass_t iclass )
-	{
-		return std::find( std::begin( ret_list ), std::end( ret_list ), iclass ) != std::end( ret_list );
-	}
-	inline constexpr bool is_uret( iclass_t iclass )
-	{
-		return iclass == XED_ICLASS_RET_NEAR || iclass == XED_ICLASS_RET_FAR;
-	}
-	inline constexpr bool is_ret( iclass_t iclass )
-	{
-		return is_uret( iclass ) || is_sret( iclass );
-	}
-	inline constexpr bool is_call( iclass_t iclass )
-	{
-		return iclass == XED_ICLASS_CALL_NEAR || iclass == XED_ICLASS_CALL_FAR;
-	}
-	inline constexpr bool is_jmp( iclass_t iclass )
-	{
-		return iclass == XED_ICLASS_JMP || iclass == XED_ICLASS_JMP_FAR;
-	}
-	inline bool is_register( op_name_t n )
-	{
+	inline bool is_register( op_name_t n ) {
 		return xed_operand_is_register( n );
 	}
-	inline bool is_adr_register( op_name_t n )
-	{
+	inline bool is_adr_register( op_name_t n ) {
 		return xed_operand_is_memory_addressing_register( n );
 	}
-	inline constexpr bool is_read( op_action_t a, bool always = false )
-	{
-		switch ( a )
-		{
+	inline constexpr bool is_read( op_action_t a, bool always = false ) {
+		switch ( a ) {
 			case XED_OPERAND_ACTION_R:   return true;
 			case XED_OPERAND_ACTION_RW:  return true;
 			case XED_OPERAND_ACTION_CR:  return !always;
@@ -406,10 +392,8 @@ namespace xed
 			default:                     return false;
 		}
 	}
-	inline constexpr bool is_write( op_action_t a, bool always = false )
-	{
-		switch ( a )
-		{
+	inline constexpr bool is_write( op_action_t a, bool always = false ) {
+		switch ( a ) {
 			case XED_OPERAND_ACTION_W:   return true;
 			case XED_OPERAND_ACTION_RW:  return true;
 			case XED_OPERAND_ACTION_CW:  return !always;
@@ -418,17 +402,14 @@ namespace xed
 			default:                     return false;
 		}
 	}
-	inline constexpr bool is_overwrite( op_action_t a, bool always = false )
-	{
-		switch ( a )
-		{
+	inline constexpr bool is_overwrite( op_action_t a, bool always = false ) {
+		switch ( a ) {
 			case XED_OPERAND_ACTION_W:   return true;
 			case XED_OPERAND_ACTION_CW:  return !always;
 			default:                     return false;
 		}
 	}
-	inline bool is_isa_set_valid_for_chip( isa_set_t isa, chip_t chip )
-	{
+	inline bool is_isa_set_valid_for_chip( isa_set_t isa, chip_t chip ) {
 		return xed_isa_set_is_valid_for_chip( isa, chip );
 	}
 
@@ -1194,12 +1175,14 @@ namespace xed
 		void set_mem_scale( size_t idx, size_t scale ) { fassert( idx == 0 ); xed_operand_values_set_scale( this, idx, scale ); }
 		void set_mem( size_t idx, const xed::mem& m )
 		{
-			if ( idx == 0 ) set_mem_width_bits( m.width_bits() );
+			if ( idx == 0 ) {
+				set_mem_width_bits( m.width_bits() );
+				set_mem_index( idx, m.index() );
+				set_mem_scale( idx, m.scale() );
+				set_mem_disp( idx, m.disp() );
+			}
 			set_mem_seg( idx, m.seg() );
 			set_mem_base( idx, m.base() );
-			set_mem_index( idx, m.index() );
-			set_mem_scale( idx, m.scale() );
-			set_mem_disp( idx, m.disp() );
 		}
 
 		// User data.
