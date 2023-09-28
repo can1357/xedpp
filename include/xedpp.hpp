@@ -1142,8 +1142,8 @@ namespace xed
 		size_t num_reg_operands() const 
 		{ 
 			for ( size_t n = 0;; n++ ) 
-				if ( reg( n ) == XED_REG_INVALID ) 
-					return n; 
+				if ( auto r = reg( n ); r == XED_REG_INVALID || is_flags( r ) )
+					return n;
 			unreachable(); 
 		}
 		reg_t reg( op_name_t name ) const { return xed_decoded_inst_get_reg( this, name ); }
