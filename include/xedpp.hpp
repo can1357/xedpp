@@ -1227,7 +1227,7 @@ namespace xed
 		std::string to_string( uint64_t address = 0 ) const
 		{
 			std::string dump( 128 + 1, 0 );
-			if ( to_string( dump.data(), dump.size() - 1 ) )
+			if ( to_string( dump.data(), dump.size() - 1, address ) )
 			{
 				dump.resize( strlen( dump.data() ) );
 				return dump;
@@ -1238,8 +1238,8 @@ namespace xed
 		// Instruction properties.
 		//
 		size_t length() const { return this->_decoded_length; }
-		uint8_t at( size_t n ) const { return xed_decoded_inst_get_byte( this, n ); }
-		uint8_t operator[]( size_t n ) const { return at( n ); }
+		const uint8_t& at( size_t n ) const { return this->_byte_array._dec[ n ]; }
+		const uint8_t& operator[]( size_t n ) const { return at( n ); }
 
 		// Memory operands.
 		//
